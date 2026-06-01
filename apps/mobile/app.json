@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "InkWeaver Mobile",
+    "slug": "inkweaver-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.alcyer.inkweavermobile"
+    },
+    "plugins": [
+      
+    ],
+    "newArchEnabled": false
+  }
+}

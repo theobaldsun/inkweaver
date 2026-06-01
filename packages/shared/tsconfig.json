@@ -1,0 +1,30 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./dist",
+    "declaration": true,      // 生成 .d.ts 类型文件
+    "declarationMap": true,   // 可选
+    "lib": ["ES2022"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "typeRoots": [
+      "./node_modules/@types",  // 默认查找位置
+      "../../node_modules/@types" // 根目录的类型位置
+    ],
+    "paths": {
+    },
+    "verbatimModuleSyntax": false,
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    "**/__tests__/**",
+    "**/*.test.*"
+  ]
+}
+

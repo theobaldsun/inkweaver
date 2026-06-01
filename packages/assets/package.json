@@ -1,0 +1,48 @@
+{
+  "name": "@inkweaver/assets",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./dist/index.cjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "react-native": "./dist/index.cjs",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.cjs"
+    },
+    "./images": {
+      "types": "./dist/images/index.d.ts",
+      "react-native": "./dist/images/index.cjs",
+      "import": "./dist/images/index.mjs",
+      "require": "./dist/images/index.cjs",
+      "default": "./dist/images/index.cjs"
+    },
+    "./fonts": {
+      "types": "./dist/fonts/index.d.ts",
+      "react-native": "./dist/fonts/index.cjs",
+      "import": "./dist/fonts/index.mjs",
+      "require": "./dist/fonts/index.cjs",
+      "default": "./dist/fonts/index.cjs"
+    },
+    "./styles": {
+      "types": "./dist/styles/index.d.ts",
+      "react-native": "./dist/styles/index.cjs",
+      "import": "./dist/styles/index.mjs",
+      "require": "./dist/styles/index.cjs",
+      "default": "./dist/styles/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup --config tsup.config.ts",
+    "dev": "tsup src/index.ts src/images/index.ts src/fonts/index.ts src/styles/index.ts --format cjs,esm --dts --watch",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "eslint": "^9.33.0",
+    "typescript": "^5.9.3"
+  }
+}

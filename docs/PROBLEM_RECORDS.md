@@ -1,0 +1,807 @@
+# SyncBox-AI 问题记录文档
+
+## 目录
+
+1. [认证与鉴权问题](#1-认证与鉴权问题)
+2. [模块解析与构建优化](#2-模块解析与构建优化)
+3. [同步相关问题](#3-同步相关问题)
+4. [数据库与缓存问题](#4-数据库与缓存问题)
+5. [移动端特定问题](#5-移动端特定问题)
+6. [端口与服务问题](#6-端口与服务问题)
+7. [导航架构优化](#7-导航架构优化)
+8. [PC Web 客户端问题](#8-pc-web-客户端问题)
+2. [模块解析与构建优化](#2-模块解析与构建优化)
+3. [同步相关问题](#3-同步相关问题)
+4. [数据库与缓存问题](#4-数据库与缓存问题)
+5. [移动端特定问题](#5-移动端特定问题)
+6. [端口与服务问题](#6-端口与服务问题)
+7. [导航架构优化](#7-导航架构优化)
+
+---
+
+## 1. 认证与鉴权问题
+
+### 1.1 接口鉴权后请求异常
+
+**问题描述**: 接口鉴权后，前端请求不对，每个请求都带 token 不现实，应该把 token 放在统一的请求头之中。
+
+**根本原因**: 请求拦截器未正确配置，导致每个请求需要手动携带 token。
+
+**解决方案**:
+
+1. **修改请求拦截器**：在 `api/src/client.ts` 中配置统一的 token 获取和请求头设置：
+
+```typescript
+apiClient.interceptors.request.use(async (config) => {
+  try {
+    const token = await localStorage.getItem('accessToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  } catch (error) {
+    console.warn('Failed to get token:', error);
+  }
+  return config;
+});
+```
+
+2. **修改响应拦截器**：当收到 401 错误时，清除本地存储并重定向：
+
+```typescript
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('accessToken');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+```
+
+3. **创建 `AuthRoute` 组件**：保护需要登录的路由：
+
+```typescript
+const AuthRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [authenticated, setAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken');
+    setAuthenticated(!!token);
+    setLoading(false);
+  }, []);
+
+  if (loading) return <LoadingScreen />;
+  if (!authenticated) {
+    window.location.href = '/login';
+    return null;
+  }
+  return <>{children}</>;
+};
+```
+
+**文件位置**: 
+- `packages/api/src/client.ts`
+- `apps/h5/src/components/AuthRoute.tsx`
+- `apps/h5/src/App.tsx`
+
+---
+
+### 1.2 登录后跳回登录页 / Token 存在但鉴权失败
+
+**问题描述**: 
+1. Mobile 端用户登录成功后，页面自动跳回登录页
+2. localStorage 中存储了 token，但 API 请求仍然返回 401 未授权
+
+**根本原因**: `packages/api` 和 `packages/services` 两个包各自维护独立的 `currentStorage` 变量：
+- `authService.saveTokens()` 将 token 保存到 `services` 包的 `currentStorage`
+- `apiClient` 的请求拦截器从 `api` 包的 `currentStorage` 获取 token
+- 这两个存储是独立的，导致 token 保存后无法被读取
+
+**解决方案**: 统一两个包的存储适配器，让 `services` 包使用 `api` 包的存储适配器：
+
+1. **修改 `packages/api/src/client.ts`**: 保留独立的 `currentStorage` 变量和 `setStorageAdapter`/`getStorageAdapter` 函数
+
+2. **修改 `packages/services/src/auth/authService.ts`**: 引入并使用 `api` 包的存储适配器：
+
+```typescript
+// 引入 api 包的存储适配器
+import { setStorageAdapter as setApiStorageAdapter, getStorageAdapter as getApiStorageAdapter } from '@inkweaver/api';
+
+// 代理到 api 包的存储适配器
+export function setStorageAdapter(storage: StorageAdapter): void {
+  setApiStorageAdapter(storage);
+}
+
+export function getStorageAdapter(): StorageAdapter {
+  return getApiStorageAdapter();
+}
+
+// 在 authService 中使用统一的存储适配器
+async saveTokens(tokens: LoginResponse, userId: string): Promise<void> {
+  const storage = getApiStorageAdapter();
+  await storage.setItem(TOKENS_KEY, JSON.stringify({ ...tokens, userId }));
+}
+```
+
+**文件位置**: 
+- `packages/api/src/client.ts`
+- `packages/services/src/auth/authService.ts`
+
+---
+
+### 1.3 Mobile 登录返回 400 错误
+
+**问题描述**: Mobile 端登录时返回 `Bad Request Exception`。
+
+**根本原因**: 后端 `LoginDto` 要求密码最少 8 位，但前端没有进行验证。
+
+**解决方案**: 添加密码长度验证：
+
+```typescript
+if (password.length < 8) {
+  setError('password', { message: '密码至少需要8位' });
+  return;
+}
+```
+
+**文件位置**: `apps/mobile/src/pages/AuthScreen.tsx`
+
+---
+
+### 1.5 保存文档失败，userId 字段为 null
+
+**问题描述**: 保存文档失败，错误信息是 "null value in column "userId" of relation "documents" violates not-null constraint"。
+
+**根本原因**: `createDocument` 方法从 `req.user` 中获取 `id` 属性，但是 JWT token 的 payload 中使用的是 `sub` 属性来存储用户 ID。
+
+**解决方案**: 
+
+1. 修改 `documents.controller.ts`：将所有 `req.user.id` 改为 `req.user.sub`
+
+```typescript
+// 修复前
+const userId = req.user.id;
+
+// 修复后
+const userId = req.user.sub;
+```
+
+2. 修改 DTO 文件使用 TypeScript 类属性和装饰器：
+
+```typescript
+import { IsString, IsOptional } from 'class-validator';
+
+export class CreateDocumentDto {
+  @IsString()
+  title: string;
+
+  @IsString()
+  @IsOptional()
+  content?: string;
+}
+```
+
+**文件位置**: 
+- `apps/server/src/modules/documents/documents.controller.ts`
+- `apps/server/src/modules/documents/dto/create-document.dto.ts`
+- `apps/server/src/modules/documents/dto/update-document.dto.ts`
+
+---
+
+## 2. 模块解析与构建优化
+
+### 2.1 Metro 无法解析共享包
+
+**问题描述**: Metro bundler 报错 `Unable to resolve "../../../../packages/sync-engine"`。
+
+**根本原因**: 
+1. 子包缺少 `main` 和 `types` 字段
+2. Metro 对 `exports` 字段的解析需要明确的入口配置
+
+**解决方案**: 
+
+1. 为每个子包添加 `main` 和 `types` 字段：
+
+```json
+{
+  "main": "./dist/index.cjs",
+  "types": "./dist/index.d.ts"
+}
+```
+
+2. 配置 `exports` 字段支持多平台：
+
+```json
+{
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "react-native": "./dist/index.cjs",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.cjs"
+    }
+  }
+}
+```
+
+**文件位置**: `packages/*/package.json`
+
+---
+
+### 2.2 Metro 对 ESM 处理不稳定
+
+**问题描述**: 子包设置 `"type": "module"` 后，Metro bundler 解析异常。
+
+**根本原因**: Metro 默认假设代码是 CommonJS，对 ESM 的支持不稳定。
+
+**解决方案**: 
+
+1. 移除 `"type": "module"` 字段
+2. 使用 `.mjs`（ESM）和 `.cjs`（CommonJS）扩展名区分格式
+3. 通过 tsup 配置文件设置输出扩展名：
+
+```typescript
+import { defineConfig } from 'tsup';
+
+export default defineConfig({
+  entry: ['src/index.ts'],
+  format: ['esm', 'cjs'],
+  outExtension({ format }) {
+    return {
+      js: format === 'esm' ? '.mjs' : '.cjs',
+    };
+  },
+  dts: true,
+  clean: true,
+});
+```
+
+**文件位置**: `packages/*/tsup.config.ts`
+
+---
+
+### 2.3 Packages 优化方案
+
+**优化目标**: 解决所有 packages 包的依赖报错问题。
+
+**优化步骤**:
+
+1. **模块配置**:
+   - 使用 `"module": "esnext"` + `"moduleResolution": "bundler"` 配置
+   - 不要求显式文件扩展名，简化导入路径
+
+2. **依赖管理**:
+   - 移除 `"references"` 和 `"composite"` 配置
+   - 放弃项目引用功能，让其他包通过 `workspace:*` 依赖 shared 的编译产物
+
+3. **构建工具**:
+   - 不依赖 tsc 的自动增量构建
+   - 使用 tsup 输出 node 和 esmodule 双格式产物
+
+4. **输出格式规范**:
+
+| package.json type | ESM 扩展名 | CJS 扩展名 |
+|-------------------|-----------|-----------|
+| `"type": "module"` | `.js` | `.cjs` |
+| `"type": "commonjs"` 或省略 | `.mjs` | `.js` |
+
+**推荐的 exports 配置**（省略 type 字段时）：
+
+```json
+{
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.cjs"
+    }
+  }
+}
+```
+
+**文件位置**: `packages/*/tsconfig.json`, `packages/*/package.json`
+
+---
+
+## 3. 同步相关问题
+
+### 3.1 pull 接口唯一约束冲突
+
+**问题描述**: 删除本地 IndexedDB 缓存后，进入文档列表点击文档，pull 接口报错：`duplicate key value violates unique constraint "IDX_afcd76612f6ab75ac533474a29"`
+
+**根本原因**: `DocSnapshot` 实体有 `@Index(['docId'], { unique: true })` 唯一约束，但代码使用 `save()` 创建新记录，导致重复插入。
+
+**解决方案**: 将所有 `save()` 改为 `upsert()` 操作：
+
+```typescript
+// 修复前
+await this.docSnapshotRepository.save(snapshot);
+
+// 修复后
+await this.docSnapshotRepository.upsert(snapshot, {
+  conflictPaths: ['docId'],
+  updateColumns: ['snapshot', 'version', 'updatedAt'],
+});
+```
+
+**文件位置**: 
+- `apps/server/src/modules/sync/sync.controller.ts`
+- `apps/server/src/modules/sync/snapshot.service.ts`
+- `apps/server/src/modules/documents/documents.service.ts`
+
+---
+
+### 3.2 文档标题无法加载
+
+**问题描述**: 文档内容可以加载，但标题显示为空。
+
+**根本原因**: 同步后只更新了 content，未从 Yjs 文档读取 title。
+
+**解决方案**: 同步后同时读取 Yjs 的 text 和 metadata：
+
+```typescript
+const yDoc = await getYDoc(docId);
+const title = yDoc.getText('title').toString();
+const content = yDoc.getText('content').toString();
+```
+
+**文件位置**: `apps/mobile/src/pages/DocumentEditScreen.tsx`
+
+---
+
+## 4. 数据库与缓存问题
+
+### 4.1 数据库查询不同步
+
+**问题描述**: 创建文档后不能立即在数据库查询到新记录，需要断开连接重连。
+
+**根本原因**: 数据库缓存和事务隔离级别问题。
+
+**解决方案**: 
+
+1. 配置事务隔离级别：
+
+```typescript
+TypeOrmModule.forRoot({
+  isolationLevel: process.env.NODE_ENV === 'production' 
+    ? 'REPEATABLE READ' 
+    : 'READ COMMITTED',
+})
+```
+
+2. 实现智能缓存失效策略：
+
+```typescript
+async createDocumentWithCache(userId: string, createDocumentDto: any) {
+  const document = await this.documentsService.createDocument(userId, createDocumentDto);
+  await this.invalidateUserDocumentsCache(userId);
+  return document;
+}
+```
+
+**文件位置**: `apps/server/src/app.module.ts`, `apps/server/src/modules/documents/documents.cache.service.ts`
+
+---
+
+## 5. 移动端特定问题
+
+### 5.1 react-native-webview ESM/CommonJS 互操作错误
+
+**问题描述**: 构建时报错 `Uncaught TypeError: _interopRequireDefault is not a function at WebView.js:1`。
+
+**根本原因**: `react-native-webview` 包是一个原生模块，在 Web 平台上无法正常工作。`expo export --platform web` 会尝试打包所有代码包括原生模块，导致 ESM/CommonJS 互操作问题。
+
+**解决方案**: 移除 `TipTapEditorRN.tsx` 中对 `react-native-webview` 的直接导入，改用平台条件渲染：
+
+```typescript
+// 移除 WebView 导入
+import { View, Platform, Text, ActivityIndicator, StyleSheet } from 'react-native';
+
+// 在 web 平台显示占位符
+if (Platform.OS === 'web') {
+  return (
+    <View style={styles.container}>
+      <Text>富文本编辑器</Text>
+    </View>
+  );
+}
+```
+
+**文件位置**: `apps/mobile/src/components/TipTapEditorRN.tsx`
+
+---
+
+### 5.2 WebCrypto ensureSecure is not a function
+
+**问题描述**: Web 平台运行时报错 `Uncaught TypeError: webcrypto__default.default.ensureSecure is not a function`。
+
+**根本原因**: 
+1. `lib0`（Yjs 的依赖）根据平台选择不同的 webcrypto 实现：
+   - `browser`: 使用浏览器原生 `crypto`
+   - `react-native`: 使用 `isomorphic-webcrypto` 并调用 `ensureSecure()`
+2. Metro bundler 的条件解析优先使用 `react-native` 条件，导致 web 平台也加载了 React Native 版本的 webcrypto
+
+**解决方案**: 在 `metro.config.js` 中添加 `resolveRequest` 配置，强制 web 平台使用浏览器版本：
+
+```javascript
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (platform === 'web' && moduleName === 'lib0/webcrypto') {
+    return {
+      type: 'sourceFile',
+      filePath: path.resolve(
+        __dirname,
+        '../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/webcrypto.js'
+      ),
+    };
+  }
+  
+  if (platform === 'web' && moduleName.includes('isomorphic-webcrypto')) {
+    return { type: 'empty' };
+  }
+  
+  return context.resolveRequest(context, moduleName, platform);
+};
+```
+
+**文件位置**: `apps/mobile/metro.config.js`
+
+---
+
+### 5.3 AsyncStorage 方法不存在
+
+**问题描述**: `AsyncStorage.multiGet` 和 `AsyncStorage.multiRemove` 方法不存在。
+
+**根本原因**: Expo 的 `@react-native-async-storage/async-storage` 包 API 与 React Native 原生的 AsyncStorage 不同。
+
+**解决方案**: 使用循环调用单个方法替代：
+
+```typescript
+// 修复前
+const values = await AsyncStorage.multiGet(keys);
+
+// 修复后
+const values = await Promise.all(keys.map(key => AsyncStorage.getItem(key)));
+```
+
+**文件位置**: `packages/adapters/src/mobile/storage.ts`
+
+---
+
+## 6. 端口与服务问题
+
+### 6.1 服务端 3000 端口被占用
+
+**问题描述**: 服务端 3000 端口总是被占用，明明没有跑任何程序。
+
+**解决方案**:
+
+1. **检查端口占用情况**:
+```bash
+netstat -ano | findstr :3000
+```
+
+2. **终止占用端口的进程**:
+```bash
+taskkill /PID [pid] /F
+```
+
+**预防措施**:
+1. 使用 `pnpm kill` 命令确保所有相关进程都被终止
+2. 在 `server` 项目的 `.env` 文件中修改端口号
+3. 定期检查进程列表
+
+---
+
+### 6.2 Mobile 端口 8081 被占用
+
+**问题描述**: `expo start` 时提示端口 8081 被占用，但非交互式模式无法选择备用端口。
+
+**解决方案**: 创建智能启动脚本自动检测端口：
+
+```typescript
+function isPortInUse(port) {
+  // 检测端口是否被占用
+}
+
+const defaultPort = 8081;
+let port = defaultPort;
+
+if (isPortInUse(port)) {
+  for (let i = 1; i <= 10; i++) {
+    const altPort = defaultPort + i;
+    if (!isPortInUse(altPort)) {
+      port = altPort;
+      break;
+    }
+  }
+}
+
+// 启动 Expo
+process.env.CI = '1';
+spawn(`npx expo start --port ${port} --lan`, { shell: true });
+```
+
+**文件位置**: `apps/mobile/scripts/start.js`
+
+---
+
+## 7. 导航架构优化
+
+### 7.1 底部标签导航架构重构
+
+**问题描述**: 初始实现中，底部导航栏直接写在各页面组件内部（NoteListScreen、SearchScreen、ProfileScreen），导致：
+1. 导航状态管理分散，不符合 React Navigation 最佳实践
+2. 每个页面都需要处理导航按钮的激活状态
+3. 无法利用 React Navigation 的内置导航功能和动画效果
+4. 代码重复，维护困难
+
+**解决方案**: 采用标准的 React Navigation 嵌套导航器架构：
+
+1. **创建底部标签导航器组件** (`components/MainTabNavigator.tsx`):
+```typescript
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+
+const Tab = createBottomTabNavigator<MainTabParamList>();
+
+export const MainTabNavigator: React.FC = () => {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        tabBarIcon: ({ focused, color, size }) => {
+          // 根据 route.name 和 focused 状态渲染不同的图标
+        },
+        tabBarActiveTintColor: '#007AFF',
+        tabBarInactiveTintColor: 'gray',
+        headerShown: false,
+      })}
+    >
+      <Tab.Screen name="Notes" component={ProtectedNoteListScreen} />
+      <Tab.Screen name="Search" component={ProtectedSearchScreen} />
+      <Tab.Screen name="Profile" component={ProtectedProfileScreen} />
+    </Tab.Navigator>
+  );
+};
+```
+
+2. **重构各页面组件**: 
+   - 移除 NoteListScreen、SearchScreen、ProfileScreen 中的底部导航栏 UI 和相关样式
+   - 移除导航跳转逻辑（如 `navigation.navigate('NoteList')`）
+   - 保留页面核心功能和业务逻辑
+
+3. **更新 App.tsx 使用嵌套导航结构**:
+```typescript
+const Stack = createNativeStackNavigator<RootStackParamList>();
+
+const App = () => {
+  return (
+    <NavigationContainer>
+      <Stack.Navigator>
+        <Stack.Screen name="Auth" component={AuthScreen} />
+        <Stack.Screen 
+          name="Main" 
+          component={ProtectedMainTabNavigator}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen 
+          name="DocumentEdit" 
+          component={ProtectedDocumentEditScreen}
+          options={{ headerShown: true, title: '编辑文档' }}
+        />
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+};
+```
+
+4. **添加依赖**: 
+```json
+{
+  "dependencies": {
+    "@react-navigation/bottom-tabs": "^7.3.10"
+  }
+}
+```
+
+**架构优势**:
+- ✅ **单一职责**: 每个组件只负责一个功能（页面内容或导航管理）
+- ✅ **状态集中**: 导航状态由 React Navigation 统一管理
+- ✅ **用户体验**: 使用原生导航动画和手势
+- ✅ **可维护性**: 导航配置集中，易于扩展和修改
+- ✅ **类型安全**: 使用 TypeScript 类型定义确保导航安全
+
+**文件位置**: 
+- `apps/mobile/src/components/MainTabNavigator.tsx` (新建)
+- `apps/mobile/src/App.tsx` (重构)
+- `apps/mobile/src/pages/NoteListScreen.tsx` (移除底部导航)
+- `apps/mobile/src/pages/SearchScreen.tsx` (移除底部导航)
+- `apps/mobile/src/pages/ProfileScreen.tsx` (移除底部导航)
+- `apps/mobile/package.json` (添加依赖)
+
+---
+
+## 问题分类统计
+
+| 类别 | 问题数 | 状态 |
+|------|--------|------|
+| 认证与鉴权 | 4 | ✅ 已修复 |
+| 模块解析与构建 | 3 | ✅ 已修复 |
+| 同步相关 | 2 | ✅ 已修复 |
+| 数据库与缓存 | 1 | ✅ 已修复 |
+| 移动端特定 | 3 | ✅ 已修复 |
+| 端口与服务 | 2 | ✅ 已修复 |
+| 导航架构优化 | 1 | ✅ 已修复 |
+
+---
+
+## 最佳实践总结
+
+### 异步操作
+- 始终使用 `await` 调用异步函数
+- 注意异步操作的执行顺序
+
+### 多平台兼容
+- 移除 `"type": "module"` 字段
+- 使用 `.mjs`/`.cjs` 扩展名区分模块格式
+- 配置 `exports` 字段支持多平台
+
+### 数据库操作
+- 使用 `upsert()` 替代 `save()` 处理唯一约束
+- 合理配置事务隔离级别
+
+### 缓存管理
+- 实现智能缓存失效策略
+- 使用多级缓存提升性能
+
+### Metro 配置
+- 配置 `resolveRequest` 处理平台特定的模块解析
+
+### 导航架构
+- 使用 React Navigation 的嵌套导航器模式
+- 将底部 Tab 导航与页面内容分离
+- 使用类型安全的导航参数定义
+
+---
+
+## 8. PC Web 客户端问题
+
+### 8.1 apps/web 列表排序与 Alert 不显示
+
+**问题描述**: `showAlert` 无 UI；笔记列表排序/文件夹筛选参数未传到 API；搜索页未处理 `?q=` 深链；API 失败时注入 Mock 数据。
+
+**根本原因**: `App.tsx` 未挂载 `<Alert />`；`documentService.getDocuments` 仅转发 page/pageSize；服务端无 `folderId` 查询；开发期 Mock 回退残留。
+
+**解决方案**:
+1. `CustomModal` 使用 `useSyncExternalStore` 驱动 `Alert` 重渲染，并在 `App.tsx` 挂载。
+2. 扩展 `documentApi` / `documentService` / 服务端 `getDocuments` 支持 `sortBy`、`sortOrder`、`folderId`、`filter`。
+3. `SearchPage` 使用 `useSearchParams` 读取 `q`；移除列表/侧栏/文件夹 Mock，失败展示空态或错误。
+4. Vite 代理 `/sync`；`SYNC_SOCKET_URL` 与 `VITE_*` 环境变量配置。
+
+**文件位置**:
+- `apps/web/src/App.tsx`
+- `apps/web/src/components/CustomModal.tsx`
+- `apps/web/src/pages/NoteListPage.tsx`
+- `apps/web/src/pages/SearchPage.tsx`
+- `packages/services/src/documents/documentService.ts`
+- `apps/server/src/modules/documents/documents.service.ts`
+
+### 8.2 Web + Server 完善（同步 409、通知、SMTP、h5 对齐）
+
+**问题描述**: HTTP `sync/push` 未校验 `baseUpdateId`；客户端未处理 409；无通知中心与 SMTP 重置密码；分享链接与编辑器「更多」未落地；h5 仍 Mock 与硬编码 WS。
+
+**根本原因**: 服务端 HTTP 与 WS 行为不一致；`packages/api` / `sync-engine` 未传冲突恢复字段；h5 未复用 web 的 env、Alert、syncService。
+
+**解决方案**:
+1. `PushDto.baseUpdateId` + `sync.controller` 409；`syncEngine.pushPendingUpdatesWithRetry` 遇 409 增量 pull 后重试。
+2. `notificationApi` + 顶栏 `NotificationBell` + Profile 收件箱；文档软删/清空回收站/存储 ≥90% 写入通知。
+3. `MailModule` + `AuthPasswordController` + web/h5 `ResetPasswordPage`；`.env.example` 增补 SMTP、`APP_PUBLIC_URL`。
+4. `share-link` API + `EditorMoreMenu` + `/shared/:token` 只读页。
+5. h5：`syncService` 对齐、`config/env.ts`、去 Mock、Search `?q=`、Alert。
+
+**文件位置**:
+- `apps/server/src/modules/sync/`
+- `packages/sync-engine/src/syncEngine.ts`
+- `packages/db-adapter/src/web/index.ts`
+- `apps/web/src/services/syncService.ts`
+- `apps/h5/src/services/syncService.ts`
+- `apps/server/src/modules/notifications/`
+- `apps/server/src/modules/mail/`
+
+### 8.3 SMTP 邮件异步队列（BullMQ + Handlebars）
+
+**问题描述**: `forgot-password` 同步 `await nodemailer`，SMTP 慢时阻塞 HTTP；无邮件模板；README 规划 Bull 但未接入。
+
+**根本原因**: 初版 `MailService` 直连发送；`@nestjs/bull` 依赖未注册；无 Redis/docker 本地栈。
+
+**解决方案**:
+1. `@nestjs-modules/mailer` + Handlebars 模板（`password-reset.hbs`）。
+2. `@nestjs/bullmq`：`MailDispatchService` 入队，`MailProcessor` 消费发送。
+3. 根目录 `docker-compose.yml`：postgres + redis + mailhog；`.env.example` 增补 `REDIS_*`、Mailhog SMTP。
+4. `GET /readyz` 检查 Redis 连通性。
+
+**文件位置**:
+- `apps/server/src/modules/mail/`
+- `apps/server/src/config/redis.config.ts`
+- `docker-compose.yml`
+
+### 8.4 @nestjs/bullmq 在 pnpm 下 BullExplorer DI 失败
+
+**问题描述**: `pnpm dev:server` 启动时报 `Nest can't resolve dependencies of the BullExplorer ... ModuleRef at index [0]`，邮件模块无法加载。
+
+**根本原因**: pnpm 严格依赖隔离下，`apps/server` 与 `@nestjs/bullmq` 曾解析到**不同物理路径**的 `@nestjs/core`（`require.resolve` 返回 `same: false`），Nest DI 容器无法跨实例注入 `ModuleRef`。曾尝试 `public-hoist-pattern[]=@nestjs/*` 在 Windows 上引发 `turbo.exe` / `typescript` 路径异常。
+
+**解决方案**:
+1. 干净重装依赖（删 `node_modules` 后 `pnpm install`），确保 lockfile 仅一套 `@nestjs/core@11.1.17`。
+2. 恢复 `@nestjs/bullmq`：`BullModule.forRootAsync` + `MailProcessor`（`@Processor`），无需额外 `.npmrc`（`dedupe-peer-dependents` 在 pnpm 10 默认已 `true`）。
+3. 验收门禁：安装后运行 `require.resolve('@nestjs/core')` 在 server 与 `@nestjs/bullmq` 上下文须 `same: true`。
+4. Nest 依赖仅保留在 `apps/server`，`packages/*` 不引入 `@nestjs/*`。
+
+**文件位置**:
+- `apps/server/src/app.module.ts`
+- `apps/server/src/modules/mail/mail.module.ts`
+- `apps/server/src/modules/mail/mail.processor.ts`
+- `apps/server/package.json`
+
+### 8.5 注册接口返回结构不一致
+
+**问题描述**: 注册 API 成功但页面报 `Cannot read properties of undefined (reading 'id')`。
+
+**根本原因**: 注册仅返回用户实体，缺少 `LoginResponse` 中的 `user`、`access_token`、`refresh_token`。
+
+**解决方案**:
+1. `UsersService.register()` 创建用户后调用 `login()`，返回与登录一致的 `LoginResponse`。
+
+**文件位置**:
+- `apps/server/src/modules/users/users.service.ts`
+- `apps/server/src/modules/users/users.controller.ts`
+
+### 8.6 MVP 验收 P0 项（Web/Server 上线前）
+
+**问题描述**:
+1. Yjs 编辑与 PG `documents.title/content` 不同步，搜索/分享/列表内容过时。
+2. Access Token 过期后 `apiClient` 直接跳登录，无自动刷新。
+3. WebSocket `join-doc` 无 JWT 与文档归属校验。
+
+**解决方案**:
+1. **投影**：`DocumentProjectionService` 在 sync push 后 debounce 写回 PG；`DocumentEditPage` 客户端 debounce 调用 `updateDocument` 兜底。
+2. **刷新**：`packages/api/src/client.ts` 401 刷新队列；`AuthRoute` 启动时 `ensureSession`。
+3. **WS 鉴权**：`sync.gateway` 握手校验 JWT；`join-doc`/`update` 调用 `assertDocumentActive(docId, userId)`；`syncService` 连接传 `auth.token`。
+
+**文件位置**:
+- `apps/server/src/modules/sync/document-projection.service.ts`
+- `apps/server/src/modules/sync/sync.gateway.ts`
+- `packages/api/src/client.ts`
+- `packages/services/src/auth/authService.ts`
+- `apps/web/src/components/AuthRoute.tsx`
+- `apps/web/src/services/syncService.ts`
+- `apps/web/src/pages/DocumentEditPage.tsx`
+
+### 8.7 存量文档加载慢（等待 WebSocket 超时）
+
+**问题描述**: 打开编辑页长时间白屏/loading；控制台 `WebSocket connection to ws://host:3003/socket.io/ failed` 与 `timeout`。
+
+**根本原因**:
+1. Socket.io 引擎握手路径为 `/socket.io/`，Vite 仅代理 `/sync`，局域网访问 `host:3003` 时 WS 无法到达后端 `:3000`。
+2. `DocumentEditPage` 在 `await joinDocRoom()` 成功后才 `setLoading(false)`，默认连接超时约 20s。
+
+**解决方案**:
+1. `vite.config.ts` 增加 `/socket.io` → `localhost:3000` 的 ws 代理（web/h5）。
+2. `connectSocket` 设 5s 超时；`joinDocRoom` 失败仅 warn，不抛错。
+3. REST 同步完成后立即 `setLoading(false)`，WebSocket 后台连接。
+4. `env.ts` 支持从绝对 `VITE_API_BASE_URL` 推导 `SYNC_SOCKET_URL`（局域网直连 API 时）。
+
+**文件位置**:
+- `apps/web/vite.config.ts`
+- `apps/web/src/services/syncService.ts`
+- `apps/web/src/pages/DocumentEditPage.tsx`
+- `apps/web/src/config/env.ts`
+
+---
+
+**文档版本**: 3.5  
+**创建时间**: 2026-05-07  
+**最后更新**: 2026-05-28

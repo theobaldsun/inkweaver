@@ -1,0 +1,39 @@
+{
+  "name": "@inkweaver/adapters",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.cjs"
+    },
+    "./web": {
+      "types": "./dist/web/storage.d.ts",
+      "import": "./dist/web/storage.mjs",
+      "require": "./dist/web/storage.cjs"
+    },
+    "./mobile": {
+      "types": "./dist/mobile/storage.d.ts",
+      "import": "./dist/mobile/storage.mjs",
+      "require": "./dist/mobile/storage.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/web/storage.ts src/mobile/storage.ts --format cjs,esm --dts --clean",
+    "dev": "tsup src/index.ts src/web/storage.ts src/mobile/storage.ts --format cjs,esm --dts --watch",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@inkweaver/api": "workspace:*",
+    "@react-native-async-storage/async-storage": "^3.0.2"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "eslint": "^9.33.0",
+    "typescript": "^5.9.3"
+  }
+}

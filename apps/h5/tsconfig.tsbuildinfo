@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/index.ts","./src/main.tsx","./src/adapters/platformadapter.tsx","./src/pages/authpage.tsx","./src/pages/documenteditpage.tsx","./src/pages/notelistpage.tsx","./src/pages/profilepage.tsx","./src/pages/searchpage.tsx","./src/services/syncservice.ts"],"version":"5.9.3"}

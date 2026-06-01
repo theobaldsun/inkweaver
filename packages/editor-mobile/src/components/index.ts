@@ -1,0 +1,1 @@
+export { TenTapEditor } from './TenTapEditor';

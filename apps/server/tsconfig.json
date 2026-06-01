@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",      
+    "rootDir": "./src",             
+    "noEmit": true,
+    "lib": ["ES2022"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "typeRoots": [
+      "./node_modules/@types",  // 默认查找位置
+      "../../node_modules/@types" // 根目录的类型位置
+    ],
+    "paths": {
+    },
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "allowImportingTsExtensions": false,
+    "verbatimModuleSyntax": false,
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,82 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "lib": [
+      "esnext",
+      "dom"
+    ],
+    "allowJs": true,
+    "jsx": "react-native",
+    "noEmit": true,
+    "isolatedModules": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "src/*"
+      ],
+      "@inkweaver/editor": [
+        "../../packages/editor"
+      ],
+      "@inkweaver/shared": [
+        "../../packages/shared"
+      ],
+      "@inkweaver/ui": [
+        "../../packages/ui"
+      ],
+      "@inkweaver/sync-engine": [
+        "../../packages/sync-engine"
+      ],
+      "@inkweaver/platform": [
+        "../../packages/platform"
+      ],
+      "@inkweaver/api": [
+        "../../packages/api"
+      ],
+      "@inkweaver/services": [
+        "../../packages/services"
+      ],
+      "@inkweaver/editor-mobile": [
+        "../../packages/editor-mobile"
+      ],
+      "@inkweaver/editor-web": [
+        "../../packages/editor-web"
+      ],
+      "@inkweaver/assets": [
+        "../../packages/assets"
+      ],
+      "@inkweaver/adapters": [
+        "../../packages/adapters"
+      ]
+    },
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true
+  },
+  "include": [
+    "src/**/*",
+    "../../packages/shared/src/**/*",
+    "../../packages/ui/src/**/*",
+    "../../packages/sync-engine/src/**/*",
+    "index.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    "**/__tests__/**",
+    "**/*.test.*"
+  ],
+  "extends": "expo/tsconfig.base"
+}

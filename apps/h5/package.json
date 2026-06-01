@@ -1,0 +1,33 @@
+{
+  "name": "@inkweaver/h5",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@inkweaver/adapters": "workspace:*",
+    "@inkweaver/api": "workspace:*",
+    "@inkweaver/assets": "workspace:*",
+    "@inkweaver/db-adapter": "workspace:*",
+    "@inkweaver/editor-web": "workspace:*",
+    "@inkweaver/platform": "workspace:*",
+    "@inkweaver/services": "workspace:*",
+    "@inkweaver/shared": "workspace:*",
+    "@inkweaver/sync-engine": "workspace:*",
+    "@inkweaver/ui": "workspace:*",
+    "@tanstack/react-query": "^5.0.0",
+    "dexie": "^4.0.11",
+    "lucide-react": "^1.16.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-router-dom": "^7.13.2",
+    "socket.io-client": "^4.8.3",
+    "yjs": "^13.6.10"
+  }
+}

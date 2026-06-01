@@ -1,0 +1,30 @@
+{
+  "name": "@inkweaver/services",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@inkweaver/api": "workspace:*",
+    "@inkweaver/shared": "workspace:*",
+    "@inkweaver/platform": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "eslint": "^9.33.0",
+    "typescript": "^5.9.3"
+  }
+}
