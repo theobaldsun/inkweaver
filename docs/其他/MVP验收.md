@@ -24,7 +24,7 @@
 | 存储 | 头像/图片上传、用量统计 | ✅ 完成 | `storage.controller.ts` |
 | 搜索 | 关键词搜索 + 历史 | ✅ 完成 | `search` 模块 |
 | 健康 | `/healthz`、`/readyz`（Redis + PG） | ✅ 完成 | `health.controller.ts` |
-| 部署 | TypeORM migrations、`.env.example` | ✅ 完成 | `data-source.ts`、`apps/server/.env.example` |
+| 部署 | TypeORM migrations、环境变量约定 | ✅ 完成 | `data-source.ts`、`docs/部署迁移/部署运维.md` §2 |
 | AI | 仅 `GET /api/ai/ping` | ⏸ MVP 范围外 | `ai.controller.ts` |
 
 ### P2 已知缺口（不阻塞首版上线）
@@ -54,10 +54,9 @@
 ### 前置条件
 
 ```bash
-# 根目录
+# 根目录（自备 .env 与 apps/server/.env，见 部署运维.md §2.2）
 docker compose up -d
 pnpm install
-cp apps/server/.env.example apps/server/.env   # 密码与 docker .env 对齐
 pnpm dev:server   # :3000
 pnpm dev:web      # :3003
 ```
@@ -132,6 +131,6 @@ pnpm migration:run
 
 ## 5. 相关文档
 
-- [SYSTEM_DESIGN.md](./SYSTEM_DESIGN.md) — 架构与模块职责
-- [DEPLOYMENT.md](./DEPLOYMENT.md) — 上线部署
-- [PROBLEM_RECORDS.md](./PROBLEM_RECORDS.md) — 已解决问题
+- [系统架构.md](../架构设计/系统架构.md) — 架构与模块职责
+- [部署运维.md](../部署迁移/部署运维.md) — 上线部署
+- [问题排查.md](../问题解决/问题排查.md) — 已解决问题

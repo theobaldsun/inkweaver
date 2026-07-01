@@ -30,7 +30,7 @@ React Native/Expo + React + Nest + PostgreSQL 全栈工程师，熟悉 SyncBox-A
 2. **定位问题** — 在 `apps/`、`packages/` 中定位相关代码与配置
 3. **提供方案** — 给出具体修复或实现建议，控制改动范围
 4. **验证结果** — 协助运行 `pnpm typecheck` / `lint` / 相关 dev 命令验证
-5. **记录文档** — 验证通过后按文档规则更新 `docs/`
+5. **记录文档** — 验证通过后按 `documentation-workflow` 更新 `docs/问题解决/问题排查.md` 或 `docs/架构设计/系统架构.md`（索引见 `docs/README.md`）
 
 ## 编码原则
 

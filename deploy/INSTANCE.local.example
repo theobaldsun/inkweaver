@@ -1,0 +1,11 @@
+# 生产实例本地信息（复制为 deploy/INSTANCE.local.md，勿提交 Git）
+#
+#   cp deploy/INSTANCE.local.example deploy/INSTANCE.local.md
+
+DOMAIN=app.example.com
+ECS_HOST=your.ecs.ip
+SSH_KEY_PATH=/path/to/your-ecs-key.pem
+SMTP_USER=your@example.com
+
+# SMTP_PASS 仅在本机 export，勿写入此文件：
+#   export SMTP_PASS='授权码'

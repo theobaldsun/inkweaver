@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Monorepo 架构约束
 
-产品：InkWeaver（Local-First 跨端笔记）。包 scope：`@inkweaver/*`。详情见 `docs/SYSTEM_DESIGN.md`。
+产品：InkWeaver（Local-First 跨端笔记）。包 scope：`@inkweaver/*`。详情见 `docs/架构设计/系统架构.md`；运维见 `docs/部署迁移/部署运维.md`。
 
 ## 应用层（apps/）
 

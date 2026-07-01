@@ -10,6 +10,7 @@
 import "reflect-metadata";
 
 import { ValidationPipe, HttpException, HttpStatus } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import { createLogger } from "@inkweaver/shared";
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
@@ -18,6 +19,10 @@ import { join } from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express';
 
 import { AppModule } from "./app.module";
+import {
+  getAppRuntimeConfig,
+  warnWeakSecretsIfProduction,
+} from "./config/app.config";
 
 async function bootstrap(): Promise<void> {
   const logger = createLogger({ scope: "server" });
@@ -84,7 +89,9 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  const port = Number(process.env.PORT ?? "3000");
+  const configService = app.get(ConfigService);
+  warnWeakSecretsIfProduction(configService);
+  const { port } = getAppRuntimeConfig(configService);
   await app.listen(port);
   logger.info("server started", { port });
   console.log(`Server running on http://localhost:${port}`);

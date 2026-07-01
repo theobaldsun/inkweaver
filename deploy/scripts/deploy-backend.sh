@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 if [ ! -f .env.prod ]; then
-  echo "缺少 .env.prod，请先：cp deploy/env.prod.example .env.prod"
+  echo "缺少 .env.prod，请先按 docs/部署迁移/部署运维.md §2.3 创建并编辑"
   exit 1
 fi
 

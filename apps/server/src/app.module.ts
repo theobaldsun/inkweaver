@@ -24,13 +24,10 @@ import { UsersModule } from "./modules/users/users.module";
 import { NotificationsModule } from "./modules/notifications/notifications.module";
 import { MailModule } from "./modules/mail/mail.module";
 import { getBullMqRootConfig } from "./config/redis.config";
-
-function isTypeOrmEnabled(): boolean {
-  const explicit = process.env.TYPEORM_ENABLED;
-  if (explicit === "true") return true;
-  if (explicit === "false") return false;
-  return Boolean(process.env.DB_HOST || process.env.DATABASE_URL);
-}
+import {
+  getTypeOrmOptions,
+  isTypeOrmEnabled,
+} from "./config/database.config";
 
 @Module({
   imports: [
@@ -47,18 +44,10 @@ function isTypeOrmEnabled(): boolean {
     HealthModule,
     ...(isTypeOrmEnabled()
       ? [
-          TypeOrmModule.forRoot({
-            type: "postgres",
-            host: process.env.DB_HOST ?? "localhost",
-            port: Number(process.env.DB_PORT ?? "5432"),
-            username: process.env.DB_USERNAME ?? "postgres",
-            password: process.env.DB_PASSWORD ?? "",
-            database: process.env.DB_DATABASE ?? "syncbox_db",
-            autoLoadEntities: true,
-            synchronize: (process.env.NODE_ENV ?? "development") !== "production",
-            
-            // 禁用查询结果缓存
-            cache: false,
+          TypeOrmModule.forRootAsync({
+            imports: [ConfigModule],
+            inject: [ConfigService],
+            useFactory: (config: ConfigService) => getTypeOrmOptions(config),
           }),
           UsersModule,
           DocumentsModule,
@@ -73,4 +62,3 @@ function isTypeOrmEnabled(): boolean {
   ],
 })
 export class AppModule {}
-

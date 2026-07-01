@@ -1,4 +1,4 @@
-# SyncBox-AI Web 设计规范文档
+# InkWeaver Web 设计规范
 
 ## 1. 概述
 

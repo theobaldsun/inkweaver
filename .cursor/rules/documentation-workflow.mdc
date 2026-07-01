@@ -1,5 +1,5 @@
 ---
-description: SyncBox-AI 问题记录与系统设计文档维护规范
+description: SyncBox-AI 问题记录与架构文档维护规范
 alwaysApply: true
 ---
 
@@ -9,12 +9,13 @@ alwaysApply: true
 
 | 场景 | 目标文件 |
 |------|----------|
-| Bug 修复、踩坑、配置/构建问题 | `docs/PROBLEM_RECORDS.md` |
-| 架构变更、模块边界、新子包/应用 | `docs/SYSTEM_DESIGN.md` |
+| Bug 修复、踩坑、配置/构建问题 | `docs/问题解决/问题排查.md` |
+| 架构变更、模块边界、新子包/应用 | `docs/架构设计/系统架构.md` |
+| 部署/运维流程变更 | `docs/部署迁移/部署运维.md` |
 
-**仅在问题已验证解决、或架构变更已落地后写入**，避免记录未验证的猜测。
+**仅在问题已验证解决、或变更已落地后写入**。索引见 `docs/README.md`；旧文件名见 `docs/redirects/`。
 
-## PROBLEM_RECORDS 条目模板
+## TROUBLESHOOTING 条目模板
 
 ```markdown
 ### N.N 标题
@@ -30,12 +31,12 @@ alwaysApply: true
 - `path/to/file.ts`
 ```
 
-参考现有 §1.1（鉴权拦截器）格式，归入对应分类目录。
+生产部署类归入 §9。
 
-## SYSTEM_DESIGN 更新要求
+## ARCHITECTURE 更新要求
 
 - 更新相关章节（目录结构、依赖边界、模块职责等）
-- 文末补充或更新版本号与日期
+- 文末补充版本号与日期
 
 ## 不在文档中记录
 

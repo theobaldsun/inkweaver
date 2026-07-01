@@ -12,7 +12,7 @@ COPY apps/server ./apps/server
 RUN pnpm install --frozen-lockfile --filter @inkweaver/server...
 RUN pnpm --filter @inkweaver/shared build \
   && pnpm --filter @inkweaver/server build
-RUN pnpm deploy --filter=@inkweaver/server --prod /deploy
+RUN pnpm deploy --filter=@inkweaver/server --prod /deploy --legacy
 
 FROM node:22-alpine AS runner
 RUN apk add --no-cache tini

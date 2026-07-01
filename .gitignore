@@ -6,5 +6,7 @@ build
 coverage
 .env
 .env.*
+.env.prod
+deploy/INSTANCE.local.md
 .DS_Store
 uploads/

@@ -43,6 +43,6 @@ chown -R "$SUDO_USER:$SUDO_USER" /opt/inkweaver 2>/dev/null || true
 
 echo "==> 完成。下一步："
 echo "  1. 将代码同步到 /opt/inkweaver/repo"
-echo "  2. cp deploy/env.prod.example .env.prod 并填写密码/SMTP/域名"
+echo "  2. 创建并编辑 .env.prod（见 docs/部署迁移/部署运维.md §2.3）"
 echo "  3. docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build"
 echo "  4. 配置 deploy/nginx/inkweaver.conf 并 certbot"

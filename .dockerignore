@@ -13,8 +13,6 @@ apps/mobile
 !apps/server/src/modules/mail/templates/**
 .env
 .env.*
-!.env.example
-deploy/env.prod.example
 data
 uploads
 **/*.map

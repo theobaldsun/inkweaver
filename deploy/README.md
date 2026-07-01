@@ -1,33 +1,11 @@
-# InkWeaver 单机阿里云部署
+# deploy
 
-适用于 **2C2G ECS + Ubuntu 22.04 + 单域名**，成本仅服务器与域名。
+生产部署脚本与 Nginx 配置。完整步骤见 **[docs/部署迁移/部署运维.md](../docs/部署迁移/部署运维.md)**。
 
-## 快速清单
+| 路径 | 说明 |
+|------|------|
+| `scripts/` | ECS 初始化、provision、Web 同步、备份 |
+| `nginx/` | Nginx 站点配置 |
+| `INSTANCE.local.example` | 实例 IP/域名/SSH 路径模板（复制为 `INSTANCE.local.md`，勿提交） |
 
-| 步骤 | 位置 | 命令 |
-|------|------|------|
-| 1. 初始化 ECS | 服务器 | `sudo bash deploy/scripts/ecs-init.sh` |
-| 2. 同步代码 | 服务器 `/opt/inkweaver/repo` | `git clone` 或 `rsync` |
-| 3. 配置环境 | 仓库根目录 | `cp deploy/env.prod.example .env.prod` 并编辑 |
-| 4. 启动后端 | 仓库根目录 | `bash deploy/scripts/deploy-backend.sh` |
-| 5. 构建 Web | **本地** | `bash deploy/scripts/build-web-local.sh https://app.你的域名.com` |
-| 6. 上传 Web | 本地 | `bash deploy/scripts/deploy-web.sh user@ECS_IP` |
-| 7. Nginx + SSL | 服务器 | `sudo bash deploy/scripts/setup-nginx-ssl.sh app.你的域名.com` |
-| 8. 备份 cron | 服务器 | `0 3 * * * /opt/inkweaver/repo/deploy/scripts/backup.sh` |
-
-## QQ 邮箱 SMTP
-
-1. QQ 邮箱 → 设置 → 账户 → 开启 SMTP → 生成**授权码**
-2. `.env.prod` 填写：
-   - `SMTP_HOST=smtp.qq.com`
-   - `SMTP_PORT=465`
-   - `SMTP_SECURE=true`
-   - `SMTP_PASS=授权码`（不是 QQ 密码）
-
-## 文件存储
-
-上传文件保存在宿主机 `/opt/inkweaver/uploads`（映射容器 `/app/uploads`），无需云 OSS。
-
-## 详细说明
-
-见 [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) 附录 A。
+生产环境变量：根目录 `.env.prod`（gitignore，变量说明见部署运维文档 §2.3）。
