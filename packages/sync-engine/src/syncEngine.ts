@@ -70,7 +70,7 @@ export interface SyncEngine {
 
 // 缓存 Yjs 文档实例（带LRU清理机制）
 const yDocCache = new Map<string, { doc: Y.Doc; lastAccess: number }>();
-const MAX_CACHE_SIZE = 20; // 最大缓存文档数量（与 ARCHITECTURE §6.3 一致）
+const MAX_CACHE_SIZE = 20; // 最大缓存文档数量；架构说明见 docs/架构.md
 const CACHE_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5分钟清理一次
 const logger = createLogger({ scope: "sync-engine" });
 

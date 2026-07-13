@@ -1,52 +1,42 @@
-# InkWeaver 文档中心
+# InkWeaver 项目文档
 
-Local-First 跨端笔记（SyncBox-AI Monorepo）的**项目文档**统一入口。
+本目录只保留与当前代码和部署资产对应的长期文档。实现、依赖版本、脚本参数和环境变量以仓库中的代码与配置为最终事实来源。
 
-> 个人求职/面试资料在仓库外：[../career-prep/README.md](../career-prep/README.md)（Desktop，勿写入本 repo）。
+## 文档入口
 
-## 架构设计
+| 文档 | 内容 | 主要事实来源 |
+|------|------|--------------|
+| [架构.md](./架构.md) | Monorepo 分层、依赖边界、本地优先与同步链路 | `package.json`、`apps/`、`packages/` |
+| [UI规范.md](./UI规范.md) | 设计令牌、组件、编辑器和响应式约定 | `apps/web/src/index.css`、`packages/ui`、`packages/editor-web` |
+| [运维.md](./运维.md) | 本地环境、Docker、生产部署、迁移、监控与常见故障 | Compose、`deploy/`、`apps/server` |
 
-| 文档 | 说明 |
-|------|------|
-| [系统架构.md](./架构设计/系统架构.md) | Monorepo 结构、模块职责、同步引擎、依赖边界 |
-| [UI设计规范.md](./架构设计/UI设计规范.md) | Web UI 色彩、字体、组件与布局 |
+项目级工程工作流与验证要求见根目录 [AGENTS.md](../AGENTS.md)。
 
-## 部署迁移
+## 结构入口
 
-| 文档 | 说明 |
-|------|------|
-| [部署运维.md](./部署迁移/部署运维.md) | 环境变量、Docker、Nginx、MinIO、脚本与数据库迁移 |
+- `apps/`：`server`、`web`、`h5`、`mobile`、`admin`。
+- `packages/`：共享类型、平台适配、API、业务服务、存储、同步、编辑器与 UI。
+- `deploy/`：生产脚本、Nginx 配置和本地实例信息模板。
+- 根目录 `package.json`：开发、构建、lint 与 typecheck 命令的唯一脚本清单。
 
-## 问题解决
+## 维护原则
 
-| 文档 | 说明 |
-|------|------|
-| [问题排查.md](./问题解决/问题排查.md) | 已验证的 Bug、踩坑与生产排障（§9） |
+- 文档描述稳定边界和可重复操作，不复制可直接从代码读取的大段接口、Props 或版本清单。
+- 架构、依赖或运行链路变化时更新 `架构.md`。
+- 设计令牌或 UI 约束变化时更新 `UI规范.md`；具体数值同时以源码中的令牌为准。
+- 环境变量、部署脚本、迁移或监控方式变化时更新 `运维.md`。
+- 已关闭 Bug、一次性验收状态、迁移过程记录和旧文件名跳转不进入长期文档；必要信息应归并为仍可执行的规则或排障步骤。
+- 不记录密码、Token、私钥、完整 `.env`、真实服务器地址或其他实例私密信息。
 
-## 其他
+## 验证入口
 
-| 文档 | 说明 |
-|------|------|
-| [MVP验收.md](./其他/MVP验收.md) | Web/Server MVP 功能矩阵与验收用例 |
-| [Agent指南.md](./其他/Agent指南.md) | Cursor Agent 工作流与 Monorepo 约定 |
-| [AGENTS.md](../AGENTS.md) | 根目录快捷入口（跳转 Agent 指南） |
+根据改动范围选择根 `package.json` 中的命令：
 
-## 部署脚本与实例信息
+```bash
+pnpm typecheck
+pnpm lint
+pnpm build:server
+pnpm build:web
+```
 
-| 路径 | 说明 |
-|------|------|
-| [deploy/README.md](../deploy/README.md) | 脚本与 Nginx 索引 |
-| [deploy/INSTANCE.local.example](../deploy/INSTANCE.local.example) | 实例域名/IP/SSH（复制为 local，勿提交） |
-
-## 旧文件名兼容
-
-历史英文文档见 **[redirects/README.md](./redirects/README.md)**。
-
-## 维护约定
-
-- Bug/踩坑 → `问题解决/问题排查.md`
-- 架构变更 → `架构设计/系统架构.md`
-- 部署/运维变更 → `部署迁移/部署运维.md`
-- 仅验证通过后写入，不记录密钥与完整 `.env`
-
-**文档版本**: 2.0 · **最后更新**: 2026-06-12
+只修改文档时，应至少检查项目内相对链接与旧路径引用；部署或外部系统验证需要当前任务的明确授权和可用环境。

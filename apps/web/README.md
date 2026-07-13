@@ -9,9 +9,9 @@ pnpm dev:server   # :3000
 pnpm dev:web      # :3003
 ```
 
-Web 构建变量见 [部署运维.md §2.4](../../docs/部署迁移/部署运维.md)。
+Web 构建变量见 [运维.md](../../docs/运维.md)。
 
 ## 文档
 
-- [系统架构.md](../../docs/架构设计/系统架构.md)
-- [UI设计规范.md](../../docs/架构设计/UI设计规范.md)
+- [架构.md](../../docs/架构.md)
+- [UI规范.md](../../docs/UI规范.md)

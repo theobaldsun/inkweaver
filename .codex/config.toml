@@ -1,0 +1,8 @@
+[mcp_servers.codegraph]
+command = "codegraph"
+args = ["serve", "--mcp"]
+enabled = true
+enabled_tools = ["codegraph_explore"]
+
+[mcp_servers.codegraph.env]
+CODEGRAPH_MCP_TOOLS = "explore"

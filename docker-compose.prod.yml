@@ -1,7 +1,7 @@
 # InkWeaver 生产编排（单机：PostgreSQL + Redis + Nest + MinIO）
 #
 # 用法：
-#   编辑根 .env.prod（见 docs/部署迁移/部署运维.md §2.3）
+#   编辑根 .env.prod（见 docs/运维.md）
 #   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 #
 # MinIO 控制台：https://storage.inkweaver.cn（需 DNS + Nginx）
