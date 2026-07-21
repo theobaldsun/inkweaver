@@ -10,7 +10,6 @@ const packages = [
   'adapters',
   'services',
   'ui',
-  'platform',
   'editor-core',
   'editor-mobile',
 ];

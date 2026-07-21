@@ -20,7 +20,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@inkweaver/api": "workspace:*",
     "@inkweaver/editor-core": "workspace:*",
+    "@inkweaver/shared": "workspace:*",
     "@tiptap/core": "^2.5.8",
     "@tiptap/extension-code-block-lowlight": "^2.11.7",
     "@tiptap/extension-image": "2.27.2",

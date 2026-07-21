@@ -10,9 +10,15 @@
  */
 
 import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcrypt";
+import { Repository } from "typeorm";
 
+import {
+  getAccessTokenTtl,
+  JWT_REFRESH_EXPIRES_IN,
+} from "../../config/jwt.config";
 import { verifyPasswordDigest } from "../../common/password-crypto";
 import { User } from "../users/entity/user.entity";
 import { SessionService, type CreateSessionData } from "./session.service";
@@ -58,7 +64,21 @@ export class AuthService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly sessionService: SessionService,
+    @InjectRepository(User)
+    private readonly usersRepository: Repository<User>,
   ) {}
+
+  /**
+   * 按用户 ID 从数据库加载用户；不存在则视为未授权。
+   * 输入：userId；输出：User 实体
+   */
+  private async requireUserById(userId: string): Promise<User> {
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('用户不存在或已被删除');
+    }
+    return user;
+  }
 
   /**
    * 验证密码传输摘要（SHA-256 十六进制）与库中 bcrypt 哈希。
@@ -79,7 +99,10 @@ export class AuthService {
       type: 'access',
     };
 
-    return this.jwtService.sign(payload, { expiresIn: '7d' }); // 7天过期
+    const { expiresIn } = getAccessTokenTtl();
+    return this.jwtService.sign(payload, {
+      expiresIn: expiresIn as `${number}d` | `${number}h` | `${number}m` | `${number}s`,
+    });
   }
 
   /**
@@ -92,7 +115,9 @@ export class AuthService {
       type: 'refresh',
     };
 
-    return this.jwtService.sign(payload, { expiresIn: '30d' }); // 30天过期
+    return this.jwtService.sign(payload, {
+      expiresIn: JWT_REFRESH_EXPIRES_IN,
+    });
   }
 
   /**
@@ -124,7 +149,7 @@ export class AuthService {
     return {
       access_token,
       refresh_token,
-      expires_in: 7 * 24 * 60 * 60, // 7天，单位秒
+      expires_in: getAccessTokenTtl().expiresSeconds,
       sessionId: session.id,
       user: {
         id: user.id,
@@ -146,14 +171,7 @@ export class AuthService {
 
     // 验证会话中的刷新令牌并获取会话
     const session = await this.sessionService.validateRefreshToken(refreshToken, payload.sub);
-
-    // 获取用户信息
-    // 这里需要从数据库获取用户信息，暂时使用简化版本
-    const user = { 
-      id: payload.sub, 
-      email: payload.email,
-      name: '',
-    } as User;
+    const user = await this.requireUserById(payload.sub);
     
     const [access_token, new_refresh_token] = await Promise.all([
       this.generateAccessToken(user),
@@ -172,7 +190,7 @@ export class AuthService {
     return {
       access_token,
       refresh_token: new_refresh_token,
-      expires_in: 7 * 24 * 60 * 60, // 7天，单位秒
+      expires_in: getAccessTokenTtl().expiresSeconds,
     };
   }
 
@@ -186,16 +204,9 @@ export class AuthService {
       return { isValid: false };
     }
 
-    // 会话有效，自动刷新令牌
-    const payload = await this.verifyToken(refreshToken);
-    
-    // 获取用户信息
-    // 这里需要从数据库获取用户信息，暂时使用简化版本
-    const user = { 
-      id: payload.sub, 
-      email: payload.email,
-      name: '',
-    } as User;
+    // 会话有效，自动刷新令牌（用户必须以数据库为准）
+    await this.verifyToken(refreshToken);
+    const user = await this.requireUserById(userId);
 
     const [access_token, new_refresh_token] = await Promise.all([
       this.generateAccessToken(user),
@@ -215,7 +226,7 @@ export class AuthService {
       isValid: true,
       access_token,
       refresh_token: new_refresh_token,
-      expires_in: 7 * 24 * 60 * 60, // 7天，单位秒
+      expires_in: getAccessTokenTtl().expiresSeconds,
       user: {
         id: user.id,
         email: user.email,

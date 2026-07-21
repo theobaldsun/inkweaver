@@ -6,7 +6,7 @@ import React, { useState } from 'react';
 import { LogOut, Trash2, User } from 'lucide-react';
 import CustomModal from '../CustomModal';
 import { getAssetUrl } from '../../utils/assetUrl';
-import type { User as UserType } from '@inkweaver/shared';
+import { MIN_PASSWORD_LENGTH, type User as UserType } from '@inkweaver/shared';
 
 interface ProfileAccountTabProps {
   user: UserType | null;
@@ -118,7 +118,8 @@ export const ProfileAccountTab: React.FC<ProfileAccountTabProps> = ({
               value={passwordForm.newPassword}
               onChange={(e) => setPasswordForm((f) => ({ ...f, newPassword: e.target.value }))}
               className="form-input"
-              placeholder="至少 8 位"
+              placeholder={`至少 ${MIN_PASSWORD_LENGTH} 位`}
+              minLength={MIN_PASSWORD_LENGTH}
             />
           </div>
           <div className="form-group">

@@ -60,7 +60,7 @@ export const AuthScreen: React.FC = () => {
       Alert.alert('成功', '登录成功！');
       
       // 跳转到主页面
-      navigation.navigate('NoteList');
+      navigation.navigate('Main');
       
     } catch (err) {
       setError((err as Error).message);
@@ -90,7 +90,7 @@ export const AuthScreen: React.FC = () => {
       Alert.alert('成功', '注册成功！');
       
       // 跳转到主页面
-      navigation.navigate('NoteList');
+      navigation.navigate('Main');
       
     } catch (err) {
       setError((err as Error).message);

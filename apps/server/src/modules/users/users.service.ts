@@ -1,8 +1,6 @@
 import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { hashDigestForStorage, verifyPasswordDigest, digestPlainPassword } from "../../common/password-crypto";
-import * as fs from "fs/promises";
-import * as path from "path";
 import { Repository } from "typeorm";
 
 import { mergeUserSettings, type UserSettings } from "@inkweaver/shared";
@@ -10,6 +8,7 @@ import { User } from "./entity/user.entity";
 import { AuthService } from "../auth/auth.service";
 import { SessionService } from "../auth/session.service";
 import type { CreateSessionData } from "../auth/session.service";
+import { ObjectStorageService } from "../storage/object-storage.service";
 import { StorageUsageService } from "../storage/storage-usage.service";
 import { UpdateUserSettingsDto } from "./dto/update-user-settings.dto";
 
@@ -24,6 +23,7 @@ export class UsersService {
     private readonly authService: AuthService,
     private readonly sessionService: SessionService,
     private readonly storageUsageService: StorageUsageService,
+    private readonly objectStorage: ObjectStorageService,
   ) {}
 
   async create(email: string, passwordHash: string, name?: string): Promise<User> {
@@ -201,28 +201,21 @@ export class UsersService {
     }
 
     const ext = file.mimetype === 'image/png' ? 'png' : file.mimetype === 'image/webp' ? 'webp' : 'jpg';
-    const dir = path.join(process.cwd(), 'uploads', 'avatars');
-    await fs.mkdir(dir, { recursive: true });
 
     const user = await this.findById(userId);
     if (!user) {
       throw new UnauthorizedException("用户不存在");
     }
 
-    if (user.avatarUrl) {
-      const oldPath = path.join(process.cwd(), user.avatarUrl.replace(/^\//, ''));
-      try {
-        await fs.unlink(oldPath);
-      } catch {
-        // ignore
-      }
-    }
-
     const filename = `${userId}.${ext}`;
-    const absolutePath = path.join(dir, filename);
-    await fs.writeFile(absolutePath, file.buffer);
+    const key = `avatars/${filename}`;
+    await this.objectStorage.putObject({
+      key,
+      body: file.buffer,
+      contentType: file.mimetype,
+    });
 
-    const avatarUrl = `/uploads/avatars/${filename}`;
+    const avatarUrl = `/uploads/${key}`;
     user.avatarUrl = avatarUrl;
     await this.usersRepository.save(user);
     return { avatarUrl };

@@ -17,7 +17,6 @@
   "dependencies": {
     "@inkweaver/api": "workspace:*",
     "@inkweaver/editor-mobile": "workspace:*",
-    "@inkweaver/platform": "workspace:*",
     "@inkweaver/services": "workspace:*",
     "@inkweaver/shared": "workspace:*",
     "@inkweaver/sync-engine": "workspace:*",

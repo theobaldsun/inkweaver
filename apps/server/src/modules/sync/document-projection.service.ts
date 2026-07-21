@@ -2,12 +2,13 @@
  * 将 Yjs 状态投影到 documents.title/content，供搜索、分享与列表摘要使用。
  */
 
+import { base64ToUint8Array } from '@inkweaver/shared';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { MoreThan, Repository } from 'typeorm';
 import * as Y from 'yjs';
-import { base64ToUint8Array } from '@inkweaver/shared';
 
+import { DocSnapshot } from './entity/doc-snapshot.entity';
 import { SyncUpdate } from './entity/sync-update.entity';
 import { DocumentsService } from '../documents/documents.service';
 
@@ -36,6 +37,8 @@ export class DocumentProjectionService {
   constructor(
     @InjectRepository(SyncUpdate)
     private readonly syncUpdateRepository: Repository<SyncUpdate>,
+    @InjectRepository(DocSnapshot)
+    private readonly docSnapshotRepository: Repository<DocSnapshot>,
     private readonly documentsService: DocumentsService,
   ) {}
 
@@ -53,6 +56,7 @@ export class DocumentProjectionService {
       });
     }, delayMs);
 
+    timer.unref?.();
     this.pending.set(docId, timer);
   }
 
@@ -60,21 +64,42 @@ export class DocumentProjectionService {
    * 合并全部 Yjs updates 并写回 documents 表。
    */
   async projectDocument(docId: string): Promise<void> {
-    const updates = await this.syncUpdateRepository.find({
+    const yDoc = new Y.Doc();
+    let snapshotVersion = 0;
+    let restoredSnapshot = false;
+    const latestSnapshot = await this.docSnapshotRepository.findOne({
       where: { docId },
+      order: { version: 'DESC' },
+    });
+
+    if (latestSnapshot) {
+      try {
+        Y.applyUpdate(yDoc, base64ToUint8Array(latestSnapshot.snapshot));
+        snapshotVersion = latestSnapshot.version;
+        restoredSnapshot = true;
+      } catch (error) {
+        this.logger.warn(`应用快照失败，回退到完整更新重放 docId=${docId}`, error);
+      }
+    }
+
+    const updates = await this.syncUpdateRepository.find({
+      where: {
+        docId,
+        updateId: MoreThan(snapshotVersion),
+      },
       order: { updateId: 'ASC' },
     });
 
-    if (updates.length === 0) {
+    if (!restoredSnapshot && updates.length === 0) {
       return;
     }
 
-    const yDoc = new Y.Doc();
     for (const row of updates) {
       try {
         Y.applyUpdate(yDoc, base64ToUint8Array(row.update));
       } catch (error) {
         this.logger.error(`应用 update ${row.updateId} 失败 docId=${docId}`, error);
+        return;
       }
     }
 

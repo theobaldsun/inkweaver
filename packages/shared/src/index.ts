@@ -28,6 +28,10 @@ export type {
   AuthError,
 } from "./types/auth";
 export { DEFAULT_USER_SETTINGS, mergeUserSettings } from "./constants/userSettings";
+export {
+  MIN_PASSWORD_LENGTH,
+  isPasswordLengthValid,
+} from "./constants/password";
 
 // 导出文档相关类型
 export { TRASH_RETENTION_DAYS } from "./types/document";
@@ -66,6 +70,9 @@ export {
 
 export { createPushThrottle } from './utils/pushThrottle';
 
+export { resolveSyncPullPage } from './utils/syncPull';
+export type { ResolvedSyncPullPage, SyncPullPageProgress } from './utils/syncPull';
+
 export {
   base64ToUint8Array,
   uint8ArrayToBase64,
@@ -76,4 +83,3 @@ export {
   createBase64Converter,
   base64Converter,
 } from "./utils/base64";
-

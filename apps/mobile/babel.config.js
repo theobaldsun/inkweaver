@@ -31,7 +31,6 @@ module.exports = function(api) {
             '@inkweaver/shared': '../../packages/shared',
             '@inkweaver/ui': '../../packages/ui',
             '@inkweaver/sync-engine': '../../packages/sync-engine',
-            '@inkweaver/platform': '../../packages/platform',
             '@inkweaver/api': '../../packages/api',
             '@inkweaver/services': '../../packages/services',
             '@inkweaver/adapters': '../../packages/adapters',

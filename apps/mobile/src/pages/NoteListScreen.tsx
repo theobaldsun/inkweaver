@@ -160,7 +160,7 @@ export const NoteListScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
 
-      {/* 操作按钮组 */
+      {/* 操作按钮组 */}
       <View style={styles.actionButtons}>
         <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('DocumentEdit', {})}>
           <Text style={styles.actionButtonIcon}>📝</Text>

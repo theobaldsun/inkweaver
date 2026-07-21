@@ -2,9 +2,10 @@
  * 公开分享文档只读页（无需登录）。
  */
 
+import { documentApi, getApiErrorMessage } from '@inkweaver/api';
+import { sanitizeDocumentHtml } from '../utils/sanitizeDocumentHtml';
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { documentApi, getApiErrorMessage } from '@inkweaver/api';
 
 export const SharedDocumentPage: React.FC = () => {
   const { token } = useParams<{ token: string }>();
@@ -54,7 +55,7 @@ export const SharedDocumentPage: React.FC = () => {
       </header>
       <article
         className="shared-doc-page__body"
-        dangerouslySetInnerHTML={{ __html: content || '<p>暂无内容</p>' }}
+        dangerouslySetInnerHTML={{ __html: sanitizeDocumentHtml(content || '<p>暂无内容</p>') }}
       />
     </div>
   );

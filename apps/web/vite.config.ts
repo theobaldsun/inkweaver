@@ -44,5 +44,15 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (id.includes('@tiptap') || id.includes('prosemirror') || id.includes('lowlight')) return 'editor-vendor';
+          if (id.includes('yjs') || id.includes('socket.io') || id.includes('dexie')) return 'sync-vendor';
+          if (id.includes('react-dom') || id.includes('react-router') || id.includes('/react/')) return 'react-vendor';
+        },
+      },
+    },
   },
 })

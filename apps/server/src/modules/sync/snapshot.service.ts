@@ -10,14 +10,14 @@
  * 输出：快照数据
  */
 
+import { base64ToUint8Array, uint8ArrayToBase64 } from '@inkweaver/shared';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { MoreThan, Repository } from 'typeorm';
 import * as Y from 'yjs';
-import { base64ToUint8Array, uint8ArrayToBase64 } from '@inkweaver/shared';
 
-import { SyncUpdate } from './entity/sync-update.entity';
 import { DocSnapshot } from './entity/doc-snapshot.entity';
+import { SyncUpdate } from './entity/sync-update.entity';
 
 interface SnapshotGenerationOptions {
   docId: string;
@@ -31,6 +31,7 @@ export class SnapshotService {
   private readonly logger = new Logger(SnapshotService.name);
   private readonly defaultMaxUpdates = 1000; // 默认最大更新数量
   private readonly defaultTimeThreshold = 3600000; // 默认1小时
+  private readonly pending = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     @InjectRepository(SyncUpdate)
@@ -68,7 +69,7 @@ export class SnapshotService {
     const updateCount = await this.syncUpdateRepository.count({
       where: { 
         docId, 
-        updateId: latestSnapshot.version 
+        updateId: MoreThan(latestSnapshot.version),
       },
     });
 
@@ -85,6 +86,21 @@ export class SnapshotService {
     }
 
     return false;
+  }
+
+  scheduleSnapshot(docId: string, delayMs = 5000): void {
+    const existing = this.pending.get(docId);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
+      this.pending.delete(docId);
+      this.shouldGenerateSnapshot(docId)
+        .then((shouldGenerate) => shouldGenerate ? this.generateSnapshot(docId) : null)
+        .then((snapshot) => snapshot ? this.cleanupOldSnapshots(docId) : undefined)
+        .catch((error) => this.logger.warn(`Snapshot generation failed docId=${docId}`, error));
+    }, delayMs);
+    timer.unref?.();
+    this.pending.set(docId, timer);
   }
 
   /**
@@ -115,7 +131,7 @@ export class SnapshotService {
           Y.applyUpdate(yDoc, uint8Array);
         } catch (error) {
           this.logger.error(`Failed to apply update ${update.updateId} for doc ${docId}:`, error);
-          // 继续处理下一个更新
+          return null;
         }
       }
 

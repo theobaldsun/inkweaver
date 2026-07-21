@@ -35,9 +35,6 @@
       "@inkweaver/sync-engine": [
         "../../packages/sync-engine"
       ],
-      "@inkweaver/platform": [
-        "../../packages/platform"
-      ],
       "@inkweaver/api": [
         "../../packages/api"
       ],

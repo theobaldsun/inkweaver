@@ -14,4 +14,4 @@ export type {
   SyncEngine,
   SyncEngineOptions,
 } from "./syncEngine";
-export { createSyncEngine } from "./syncEngine";
+export { createSyncEngine, SYNC_REPLAY_ORIGIN } from "./syncEngine";

@@ -1,12 +1,12 @@
 /**
- * 同步模块（骨架）。
+ * 同步模块。
  *
  * 用途：
- * - 提供同步相关接口：push/pull（MVP：REST；后续：WebSocket 网关）
+ * - REST：`/api/sync/push`、`/api/sync/pull`（校验、冲突水位、投影与快照调度）
+ * - WebSocket：Socket.IO 命名空间 `/sync`（加入房间、实时 update）
  *
- * 输入：HTTP 请求（变更列表/同步水位）
- * 输出：ackSeq / changes/**
- * 同步模块
+ * 输入：鉴权后的文档变更 / 同步水位
+ * 输出：持久化更新、快照/增量拉取结果、房间广播
  */
 
 import { Module } from "@nestjs/common";

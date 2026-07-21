@@ -8,13 +8,19 @@
  * 输出：经过验证/转换的 DTO 实例（ValidationPipe）
  */
 
-import { IsArray, IsString, IsNumber, IsOptional, Min, Max } from "class-validator";
+import { ArrayMaxSize, IsArray, IsBase64, IsString, IsNumber, IsOptional, MaxLength, Min, Max } from "class-validator";
+
+import { MAX_SYNC_UPDATE_BASE64_LENGTH, MAX_SYNC_UPDATES_PER_REQUEST } from '../sync-update.validation';
 
 export class PushDto {
   @IsString()
   docId!: string;
 
   @IsArray()
+  @ArrayMaxSize(MAX_SYNC_UPDATES_PER_REQUEST)
+  @IsString({ each: true })
+  @IsBase64({}, { each: true })
+  @MaxLength(MAX_SYNC_UPDATE_BASE64_LENGTH, { each: true })
   updates!: string[]; // Base64 编码的 Yjs updates
 
   @IsOptional()
@@ -57,6 +63,7 @@ export class PullDto {
  */
 export class PullResponseDto {
   snapshot?: string; // Base64 编码的文档快照
+  snapshotVersion?: number; // snapshot 对应的最新 update_id
   updates!: string[]; // Base64 编码的 Yjs updates
   nextCursor!: number; // 下一次拉取的游标
   hasMore!: boolean; // 是否还有更多数据

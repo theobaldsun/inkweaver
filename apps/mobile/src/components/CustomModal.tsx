@@ -51,7 +51,7 @@ export const CustomModal: React.FC<ModalProps> = ({
       transparent={true}
       onRequestClose={onClose}
     >
-      <View style={styles.overlay} onPress={onClose}>
+      <TouchableOpacity style={styles.overlay} onPress={onClose} activeOpacity={1}>
         <View style={styles.content}>
           <View style={styles.header}>
             <View style={[styles.iconContainer, { backgroundColor: `${iconColor}15` }]}>
@@ -81,7 +81,7 @@ export const CustomModal: React.FC<ModalProps> = ({
             </View>
           )}
         </View>
-      </View>
+      </TouchableOpacity>
     </Modal>
   );
 };
@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
   confirmButton: {
     paddingHorizontal: 24,
     paddingVertical: 12,
-    background: 'linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%)',
+    backgroundColor: '#3b82f6',
     borderRadius: 10,
     shadowColor: '#3b82f6',
     shadowOffset: { width: 0, height: 2 },
@@ -189,7 +189,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   successButton: {
-    background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+    backgroundColor: '#22c55e',
   },
   confirmButtonText: {
     fontSize: 14,

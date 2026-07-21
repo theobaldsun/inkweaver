@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { User, UserSettings, UserSessionInfo } from '@inkweaver/shared';
-import { DEFAULT_USER_SETTINGS } from '@inkweaver/shared';
+import { DEFAULT_USER_SETTINGS, MIN_PASSWORD_LENGTH, isPasswordLengthValid } from '@inkweaver/shared';
 import { authService, userService } from '../services/apiClient';
 import { searchService } from '@inkweaver/services';
 
@@ -130,8 +130,8 @@ export function useProfilePage() {
         setError('两次输入的新密码不一致');
         return;
       }
-      if (passwordForm.newPassword.length < 8) {
-        setError('新密码至少 8 位');
+      if (!isPasswordLengthValid(passwordForm.newPassword)) {
+        setError(`新密码至少 ${MIN_PASSWORD_LENGTH} 位`);
         return;
       }
       await userService.changePassword({

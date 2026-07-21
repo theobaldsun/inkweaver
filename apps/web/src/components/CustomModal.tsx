@@ -1,7 +1,7 @@
 /**
  * 自定义确认弹窗与全局 Alert（showAlert）。
  */
-import React, { useSyncExternalStore } from 'react';
+import React, { useEffect, useId, useRef, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react';
 
@@ -30,26 +30,80 @@ const CustomModal: React.FC<CustomModalProps> = ({
   showCustomContent = false,
   customContent = null,
 }) => {
+  const titleId = useId();
+  const descriptionId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    confirmRef.current?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onCancel();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialogRef.current) return;
+
+      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      previouslyFocused?.focus?.();
+    };
+  }, [isOpen, onCancel]);
+
   if (!isOpen) return null;
 
   return (
     <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="modal-content"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="modal-header">
-          <h3>{title}</h3>
-          <button className="modal-close" onClick={onCancel}>
+          <h3 id={titleId}>{title}</h3>
+          <button type="button" className="modal-close" onClick={onCancel} aria-label="关闭对话框">
             <X size={20} />
           </button>
         </div>
         <div className="modal-body">
-          <p className="custom-modal-message">{message}</p>
+          <p id={descriptionId} className="custom-modal-message">{message}</p>
           {showCustomContent && customContent}
         </div>
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onCancel}>
+          <button type="button" className="btn btn-secondary" onClick={onCancel}>
             取消
           </button>
-          <button className="btn btn-primary" onClick={onConfirm}>
+          <button
+            ref={confirmRef}
+            type="button"
+            className="btn btn-primary"
+            onClick={onConfirm}
+            autoFocus
+          >
             确认
           </button>
         </div>
@@ -129,7 +183,12 @@ export const Alert: React.FC = () => {
         <p id="alert-dialog-desc" className="alert-message">
           {config.message}
         </p>
-        <button type="button" className="btn btn-primary alert-confirm-btn" onClick={handleClose}>
+        <button
+          type="button"
+          className="btn btn-primary alert-confirm-btn"
+          onClick={handleClose}
+          autoFocus
+        >
           确定
         </button>
       </div>

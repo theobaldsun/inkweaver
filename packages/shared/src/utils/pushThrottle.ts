@@ -1,5 +1,8 @@
 /**
- * 推送节流：合并短时间内的多次回调。
+ * 推送节流：窗口内多次调用在窗口结束后按入队顺序全部执行。
+ *
+ * 调用方应在回调内自行合并缓冲（如 DocumentEditPage 的 pending Map），
+ * 同一 docId 多次入队时后续调用会读到已清空缓冲并 no-op。
  */
 
 /**
@@ -12,16 +15,17 @@ export function createPushThrottle<T extends (...args: never[]) => void>(
   delayMs: number,
 ): (...args: Parameters<T>) => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
-  let lastArgs: Parameters<T> | null = null;
+  let queuedArgs: Parameters<T>[] = [];
 
   return (...args: Parameters<T>) => {
-    lastArgs = args;
+    queuedArgs.push(args);
     if (timer) return;
     timer = setTimeout(() => {
       timer = null;
-      if (lastArgs) {
-        fn(...lastArgs);
-        lastArgs = null;
+      const batch = queuedArgs;
+      queuedArgs = [];
+      for (const invocation of batch) {
+        fn(...invocation);
       }
     }, delayMs);
   };

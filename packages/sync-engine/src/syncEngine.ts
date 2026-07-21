@@ -12,7 +12,9 @@
 
 import { createLogger } from "@inkweaver/shared";
 import * as Y from 'yjs';
+
 import type { LocalDB } from "@inkweaver/db-adapter";
+import type { Document } from "@inkweaver/shared";
 
 /**
  * 同步引擎选项
@@ -74,23 +76,42 @@ const MAX_CACHE_SIZE = 20; // 最大缓存文档数量；架构说明见 docs/�
 const CACHE_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5分钟清理一次
 const logger = createLogger({ scope: "sync-engine" });
 
+/** 标记由同步引擎恢复/拉取的更新，避免客户端监听器把它们再次加入 pending 队列。 */
+export const SYNC_REPLAY_ORIGIN = 'inkweaver:sync-replay';
+
 // 定期清理缓存
-setInterval(() => {
+const cacheCleanupTimer = setInterval(() => {
   cleanupYDocCache();
 }, CACHE_CLEANUP_INTERVAL);
+cacheCleanupTimer.unref?.();
+
+/**
+ * 从缓存移除并销毁 Y.Doc，释放内部监听与内存。
+ * 输入：docId；输出：是否移除成功
+ */
+function evictYDoc(docId: string): boolean {
+  const entry = yDocCache.get(docId);
+  if (!entry) return false;
+  yDocCache.delete(docId);
+  try {
+    entry.doc.destroy();
+  } catch (error) {
+    logger.warn(`Failed to destroy Y.Doc for doc: ${docId}`, error);
+  }
+  return true;
+}
 
 function cleanupYDocCache() {
   if (yDocCache.size <= MAX_CACHE_SIZE) return;
-  
-  // 按最后访问时间排序，删除最旧的文档
+
   const entries = Array.from(yDocCache.entries());
   entries.sort((a, b) => a[1].lastAccess - b[1].lastAccess);
-  
-  // 删除超出最大数量的文档
+
   const toDelete = entries.slice(0, entries.length - MAX_CACHE_SIZE);
   for (const [docId] of toDelete) {
-    yDocCache.delete(docId);
-    logger.info(`Cleaned up YDoc cache for doc: ${docId}`);
+    if (evictYDoc(docId)) {
+      logger.info(`Cleaned up YDoc cache for doc: ${docId}`);
+    }
   }
 }
 
@@ -111,6 +132,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       // 注意：移除 update 监听，避免重复保存
       // 本地编辑的更新由 DocumentEditPage 的 handleUpdate 统一保存
       yDocCache.set(docId, { doc, lastAccess: Date.now() });
+      cleanupYDocCache();
     } else {
       // 更新最后访问时间
       const cached = yDocCache.get(docId)!;
@@ -128,7 +150,6 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       const localDoc = await options.localDB.getDoc(docId).catch(() => null);
       const hasLocalSnapshot = !!localDoc?.yjsSnapshot;
       const lastUpdateId = localDoc?.lastUpdateId || 0; // 使用lastUpdateId作为cursor
-      console.log('--------------', localDoc);
       
       // 2. 获取 Yjs 文档实例
       const yDoc = getYDoc(docId);
@@ -140,7 +161,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
         
         try {
           // 应用本地快照恢复现场（秒开）
-          Y.applyUpdate(yDoc, localDoc!.yjsSnapshot!);
+          Y.applyUpdate(yDoc, localDoc!.yjsSnapshot!, SYNC_REPLAY_ORIGIN);
           logger.info(`Applied local snapshot for doc ${docId}`);
           
           // 拉取服务器增量更新（基于本地lastUpdateId）
@@ -153,7 +174,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
             logger.info(`场景C：本地快照极度落后，应用服务器快照`);
             
             // 应用服务器快照（覆盖本地快照，但保留本地pending更新）
-            Y.applyUpdate(yDoc, snapshot);
+            Y.applyUpdate(yDoc, snapshot, SYNC_REPLAY_ORIGIN);
             
             // 保存服务器快照到本地
             await options.localDB.saveDoc({
@@ -166,7 +187,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
           
           // 应用增量更新
           for (const update of updates) {
-            Y.applyUpdate(yDoc, update);
+            Y.applyUpdate(yDoc, update, SYNC_REPLAY_ORIGIN);
             await options.localDB.saveUpdate({
               docId,
               update,
@@ -175,12 +196,17 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
               pending: false,
             });
           }
-          localDoc!.lastUpdateId = nextCursor; // 从最后一次 pull 中获取最新的 cursor 作为 lastUpdateId
-          // 推送本地pending更新到服务器
+          await options.localDB.saveDoc({
+            ...localDoc!,
+            lastUpdateId: nextCursor,
+            updatedAt: new Date().toISOString(),
+          });
+          await applyPendingUpdatesToYDoc(docId, yDoc);
           const pushed = await pushPendingUpdatesWithRetry(docId);
           
           // 同步完成后生成新的本地快照
-          await generateAndSaveSnapshot(docId, yDoc, localDoc!);
+          const syncedDoc = await options.localDB.getDoc(docId);
+          await generateAndSaveSnapshot(docId, yDoc, syncedDoc);
           
           return { pushed, pulled };
           
@@ -197,22 +223,17 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
         try {
           // 拉取全量数据（cursor=0）
           const { updates, snapshot, nextCursor } = await options.api.pull(docId, 0, 100, 0);
-          console.log('After pull, about to log');
           const pulled = updates.length;
           
           if (snapshot) {
             // 应用服务器快照
-            Y.applyUpdate(yDoc, snapshot);
-            const testContent = yDoc.getText('content').toString();
-            console.log('Content after applying server snapshot:', testContent);
+            Y.applyUpdate(yDoc, snapshot, SYNC_REPLAY_ORIGIN);
             logger.info(`Applied server snapshot for doc ${docId}`);
             // 快照保存由 generateAndSaveSnapshot 统一处理
           }
-          console.log('场景A：全量数据同步完成', updates, snapshot);
-          
           // 应用增量更新
           for (const update of updates) {
-            Y.applyUpdate(yDoc, update);
+            Y.applyUpdate(yDoc, update, SYNC_REPLAY_ORIGIN);
             await options.localDB.saveUpdate({
               docId,
               update,
@@ -223,12 +244,23 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
           }
           
           // 同步完成后生成新的本地快照
-          const docToSave = localDoc || { id: docId, createdAt: new Date().toISOString(), lastUpdateId: null };
-          // 关键修复：保存 lastUpdateId
+          const now = new Date().toISOString();
+          const docToSave = localDoc || {
+            id: docId,
+            title: '',
+            content: '',
+            userId: '',
+            createdAt: now,
+            updatedAt: now,
+          };
           docToSave.lastUpdateId = nextCursor;
-          await generateAndSaveSnapshot(docId, yDoc, docToSave);
-          
-          const pushed = 0;
+          await options.localDB.saveDoc(docToSave);
+          await applyPendingUpdatesToYDoc(docId, yDoc);
+
+          const pushed = await pushPendingUpdatesWithRetry(docId);
+          const syncedDoc = await options.localDB.getDoc(docId);
+          await generateAndSaveSnapshot(docId, yDoc, syncedDoc);
+
           return { pushed, pulled };
           
         } catch (error) {
@@ -253,10 +285,10 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     const pullResult = await options.api.pull(docId, cursor, 100, 0);
 
     if (pullResult.snapshot && localDoc) {
-      Y.applyUpdate(yDoc, pullResult.snapshot);
+      Y.applyUpdate(yDoc, pullResult.snapshot, SYNC_REPLAY_ORIGIN);
     }
     for (const update of pullResult.updates) {
-      Y.applyUpdate(yDoc, update);
+      Y.applyUpdate(yDoc, update, SYNC_REPLAY_ORIGIN);
       await options.localDB.saveUpdate({
         docId,
         update,
@@ -287,12 +319,24 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     return ax.response?.status === 409;
   }
 
+  async function applyPendingUpdatesToYDoc(docId: string, yDoc: Y.Doc): Promise<void> {
+    const pendingUpdates = await options.localDB.getPendingUpdates(docId);
+    for (const pendingUpdate of pendingUpdates) {
+      try {
+        Y.applyUpdate(yDoc, pendingUpdate.update, SYNC_REPLAY_ORIGIN);
+      } catch (error) {
+        logger.error(`Failed to apply pending update for doc ${docId}`, error);
+        throw error;
+      }
+    }
+  }
+
   /**
    * 带重试机制的批量推送（分批获取，逐批推送，按 ID 删除）
    */
   async function pushPendingUpdatesWithRetry(docId: string): Promise<number> {
     const maxRetries = 3;
-    const batchSize = 100;
+    const batchSize = 50;
     let totalPushed = 0;
     let hasMore = true;
 
@@ -322,9 +366,10 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
             });
           }
           success = true;
-          totalPushed += batch.length;
+          const pushedCount = batch.length;
+          totalPushed += pushedCount;
           await options.localDB.clearPendingBatch?.(docId, batchIds);
-          logger.info(`Pushed batch of ${batch.length} updates, total pushed: ${totalPushed}`);
+          logger.info(`Pushed batch of ${pushedCount} updates, total pushed: ${totalPushed}`);
         } catch (error) {
           if (isPushConflict(error) && retryCount === 0) {
             logger.warn(`Push conflict for doc ${docId}, pulling and retrying`);
@@ -351,25 +396,9 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
   }
 
   /**
-   * 标记失败的更新
-   */
-  async function markFailedUpdates(failedBatch: any[], docId: string): Promise<void> {
-    try {
-      // 这里可以实现更复杂的失败处理逻辑
-      // 例如：记录失败次数、设置重试时间等
-      logger.warn(`Marking ${failedBatch.length} updates as failed for doc ${docId}`);
-      
-      // 简单的实现：保留失败的更新，下次同步时重试
-      // 在实际应用中，可能需要更复杂的失败处理策略
-    } catch (error) {
-      logger.error('Failed to mark failed updates:', error);
-    }
-  }
-
-  /**
    * 生成并保存快照
    */
-  async function generateAndSaveSnapshot(docId: string, yDoc: Y.Doc, localDoc: any): Promise<void> {
+  async function generateAndSaveSnapshot(docId: string, yDoc: Y.Doc, localDoc: Document): Promise<void> {
     try {
       // 生成 Yjs 文档快照
       const snapshot = Y.encodeStateAsUpdate(yDoc);
@@ -391,8 +420,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
    * 清理指定文档的YDoc缓存
    */
   function clearYDocCache(docId: string): void {
-    if (yDocCache.has(docId)) {
-      yDocCache.delete(docId);
+    if (evictYDoc(docId)) {
       logger.info(`Cleared YDoc cache for doc: ${docId}`);
     }
   }

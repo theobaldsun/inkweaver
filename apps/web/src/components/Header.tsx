@@ -51,6 +51,7 @@ const Header: React.FC = () => {
             <Search size={18} />
             <input
               type="text"
+              aria-label="搜索文档"
               placeholder="搜索文档..."
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
@@ -59,7 +60,7 @@ const Header: React.FC = () => {
               onKeyDown={handleSearch}
             />
             {searchValue && (
-              <button onClick={handleClearSearch}>
+              <button type="button" onClick={handleClearSearch} aria-label="清空搜索">
                 <X size={16} />
               </button>
             )}
@@ -67,24 +68,34 @@ const Header: React.FC = () => {
         </div>
 
         <div className="header-right">
-          <button 
+          <button
+            type="button"
             className="header-btn" 
             onClick={() => navigate('/documents/new')}
             title="新建文档"
+            aria-label="新建文档"
           >
             <Plus size={20} />
           </button>
           <NotificationBell />
-          <button 
+          <button
+            type="button"
             className="header-btn" 
             onClick={handleLogout}
             title="退出登录"
+            aria-label="退出登录"
           >
             <LogOut size={20} />
           </button>
-          <div className="user-avatar" onClick={handleUserClick} title="个人资料">
+          <button
+            type="button"
+            className="user-avatar"
+            onClick={handleUserClick}
+            title="个人资料"
+            aria-label="个人资料"
+          >
             <User size={18} />
-          </div>
+          </button>
         </div>
       </header>
 

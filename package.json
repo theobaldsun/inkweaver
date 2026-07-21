@@ -28,6 +28,8 @@
     "build:sync-engine": "turbo run build --filter=@inkweaver/sync-engine",
     "build:api": "turbo run build --filter=@inkweaver/api",
     "build:services": "turbo run build --filter=@inkweaver/services",
+    "test": "pnpm -r --if-present test",
+    "test:integration": "pnpm --filter @inkweaver/server test:integration",
     "lint": "turbo run lint",
     "lint:packages": "turbo run lint --filter=@inkweaver/*",
     "lint:apps": "turbo run lint --filter=~@inkweaver/*",
@@ -81,7 +83,7 @@
     "react-router-dom": "^7.13.2"
   },
   "engines": {
-    "node": ">=22.0.0",
+    "node": ">=20.19.4",
     "pnpm": ">=8.0.0"
   }
 }

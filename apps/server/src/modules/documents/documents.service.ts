@@ -6,21 +6,28 @@
  * - 处理文档的业务逻辑
  */
 
-import { Injectable, NotFoundException, ForbiddenException } from "@nestjs/common";
-import { randomBytes, createHash } from "crypto";
+import { randomBytes } from "crypto";
+
+import { TRASH_RETENTION_DAYS, uint8ArrayToBase64 } from "@inkweaver/shared";
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  InternalServerErrorException,
+  Logger,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { IsNull, LessThan, Not, Repository } from "typeorm";
 import * as Y from 'yjs';
 
-import { TRASH_RETENTION_DAYS } from "@inkweaver/shared";
-import { Document } from "./entity/document.entity";
-import { Folder } from "./entity/folder.entity";
 import { CreateDocumentDto } from "./dto/create-document.dto";
 import { UpdateDocumentDto } from "./dto/update-document.dto";
-import { SyncUpdate } from "../sync/entity/sync-update.entity";
-import { DocSnapshot } from "../sync/entity/doc-snapshot.entity";
-import { StorageUsageService } from "../storage/storage-usage.service";
+import { Document } from "./entity/document.entity";
+import { Folder } from "./entity/folder.entity";
 import { NotificationsService } from "../notifications/notifications.service";
+import { StorageUsageService } from "../storage/storage-usage.service";
+import { DocSnapshot } from "../sync/entity/doc-snapshot.entity";
+import { SyncUpdate } from "../sync/entity/sync-update.entity";
 
 export interface TrashDocumentItem extends Document {
   purgeAt: string;
@@ -28,6 +35,8 @@ export interface TrashDocumentItem extends Document {
 
 @Injectable()
 export class DocumentsService {
+  private readonly logger = new Logger(DocumentsService.name);
+
   constructor(
     @InjectRepository(Document)
     private documentsRepository: Repository<Document>,
@@ -43,6 +52,8 @@ export class DocumentsService {
 
   /**
    * 创建文档
+   *
+   * 初始 Yjs 快照失败时回滚文档行，避免出现无 sync 基线的孤儿文档。
    */
   async createDocument(userId: string, createDocumentDto: CreateDocumentDto): Promise<Document> {
     const document = this.documentsRepository.create({
@@ -57,37 +68,53 @@ export class DocumentsService {
     });
 
     const savedDocument = await this.documentsRepository.save(document);
-    await this.generateInitialSnapshotAndUpdate(savedDocument.id, createDocumentDto);
+    try {
+      await this.generateInitialSnapshotAndUpdate(savedDocument.id, createDocumentDto);
+    } catch (error) {
+      this.logger.error(
+        `初始快照失败，回滚文档 docId=${savedDocument.id}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      await this.documentsRepository.delete(savedDocument.id);
+      throw new InternalServerErrorException('文档初始化失败，请重试');
+    }
     this.storageUsageService.scheduleRecalculate(userId);
     return savedDocument;
   }
 
-  private async generateInitialSnapshotAndUpdate(docId: string, createDocumentDto: CreateDocumentDto): Promise<void> {
-    try {
-      const yDoc = new Y.Doc();
-      const text = yDoc.getText('content');
-      text.insert(0, createDocumentDto.content || '');
-      const yMap = yDoc.getMap('metadata');
-      yMap.set('title', createDocumentDto.title || 'Untitled Document');
-      const snapshotBytes = Y.encodeStateAsUpdate(yDoc);
-      let binaryString = '';
-      for (let i = 0; i < snapshotBytes.length; i++) {
-        binaryString += String.fromCharCode(snapshotBytes[i]!);
-      }
-      const snapshot = btoa(binaryString);
-      await this.docSnapshotRepository.upsert(
-        { docId, snapshot, version: 1, createdAt: new Date() },
-        { conflictPaths: ['docId'] },
-      );
-      const initialUpdate = new SyncUpdate();
-      initialUpdate.docId = docId;
-      initialUpdate.update = snapshot;
-      initialUpdate.clientId = 'system';
-      initialUpdate.timestamp = Date.now();
-      await this.syncUpdateRepository.save(initialUpdate);
-    } catch (error) {
-      console.error('Failed to generate initial snapshot and update:', error);
-    }
+  /**
+   * 为新建文档写入首条 SyncUpdate 与 DocSnapshot。
+   * 输入：docId、创建 DTO；输出：无（失败抛错）
+   */
+  private async generateInitialSnapshotAndUpdate(
+    docId: string,
+    createDocumentDto: CreateDocumentDto,
+  ): Promise<void> {
+    const yDoc = new Y.Doc();
+    const text = yDoc.getText('content');
+    text.insert(0, createDocumentDto.content || '');
+    const yMap = yDoc.getMap('metadata');
+    yMap.set('title', createDocumentDto.title || 'Untitled Document');
+    const snapshotBytes = Y.encodeStateAsUpdate(yDoc);
+    const snapshot = uint8ArrayToBase64(snapshotBytes);
+
+    const initialUpdate = new SyncUpdate();
+    initialUpdate.docId = docId;
+    initialUpdate.update = snapshot;
+    initialUpdate.clientId = 'system';
+    initialUpdate.timestamp = Date.now();
+    const savedInitialUpdate = await this.syncUpdateRepository.save(initialUpdate);
+    await this.docSnapshotRepository.upsert(
+      {
+        docId,
+        snapshot,
+        version: savedInitialUpdate.updateId,
+        updateCount: 1,
+        size: snapshotBytes.byteLength,
+        createdAt: new Date(),
+      },
+      { conflictPaths: ['docId'] },
+    );
   }
 
   /**

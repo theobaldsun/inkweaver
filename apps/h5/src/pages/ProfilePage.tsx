@@ -69,7 +69,6 @@ export const ProfilePage: React.FC = () => {
       
       const updatedUser = await userService.updateProfile({
         name: editForm.name,
-        email: editForm.email,
       });
       
       setUser(updatedUser);

@@ -15,7 +15,7 @@
 | 层级 | 内容 |
 |------|------|
 | `apps/` | `server`、`web`、`h5`、`mobile`、`admin` |
-| 基础包 | `shared`、`assets`、`platform`、`adapters` |
+| 基础包 | `shared`、`assets`、`adapters` |
 | 数据与业务包 | `api`、`services`、`db-adapter`、`sync-engine` |
 | 编辑器与界面包 | `editor-core`、`editor-web`、`editor-mobile`、`ui` |
 
@@ -25,7 +25,7 @@
 - `shared` 和 `assets` 不依赖其他 workspace 包。
 - `editor-web`、`editor-mobile` 依赖 `editor-core`，`editor-core` 依赖 `shared`。
 - `sync-engine` 只依赖 `db-adapter` 与 `shared`。
-- `services` 依赖 `api`、`platform` 与 `shared`；`ui` 当前依赖 `services`、`platform` 与 `shared`。
+- `services` 依赖 `api` 与 `shared`；`ui` 当前依赖 `services` 与 `shared`。
 - `apps/server` 负责 Nest 服务端模块；`packages/api` 和 `packages/services` 面向可复用客户端访问与业务流程。
 
 ## 文档入口

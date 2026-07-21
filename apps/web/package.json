@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "node --import tsx --test src/components/accessibility.test.ts src/utils/sanitizeDocumentHtml.test.ts",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -16,7 +17,6 @@
     "@inkweaver/assets": "workspace:*",
     "@inkweaver/db-adapter": "workspace:*",
     "@inkweaver/editor-web": "workspace:*",
-    "@inkweaver/platform": "workspace:*",
     "@inkweaver/services": "workspace:*",
     "@inkweaver/shared": "workspace:*",
     "@inkweaver/sync-engine": "workspace:*",

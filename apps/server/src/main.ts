@@ -15,14 +15,15 @@ import { NestFactory } from "@nestjs/core";
 import { createLogger } from "@inkweaver/shared";
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import * as bodyParser from 'body-parser';
-import { join } from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express';
 
 import { AppModule } from "./app.module";
 import {
   getAppRuntimeConfig,
-  warnWeakSecretsIfProduction,
+  assertStrongSecretsInProduction,
 } from "./config/app.config";
+import { ObjectStorageService } from "./modules/storage/object-storage.service";
+import { createUploadsMiddleware } from "./modules/storage/uploads.middleware";
 
 async function bootstrap(): Promise<void> {
   const logger = createLogger({ scope: "server" });
@@ -31,7 +32,8 @@ async function bootstrap(): Promise<void> {
     logger: console,
   });
 
-  app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
+  const objectStorage = app.get(ObjectStorageService);
+  app.use('/uploads', createUploadsMiddleware(objectStorage));
 
   // 增加请求体大小限制
   app.use(bodyParser.json({ limit: '100mb' }));
@@ -90,7 +92,7 @@ async function bootstrap(): Promise<void> {
   );
 
   const configService = app.get(ConfigService);
-  warnWeakSecretsIfProduction(configService);
+  assertStrongSecretsInProduction(configService);
   const { port } = getAppRuntimeConfig(configService);
   await app.listen(port);
   logger.info("server started", { port });

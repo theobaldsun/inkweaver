@@ -5,6 +5,9 @@
   "scripts": {
     "dev": "nest start --watch",
     "build": "nest build",
+    "test": "pnpm run test:unit",
+    "test:unit": "pnpm run build && node --import reflect-metadata --test dist",
+    "test:integration": "pnpm run build && node scripts/run-integration-tests.mjs",
     "start": "nest start",
     "start:prod": "node dist/main",
     "lint": "eslint .",
@@ -15,6 +18,7 @@
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/data-source.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1090.0",
     "@inkweaver/shared": "workspace:*",
     "@nestjs-modules/mailer": "^2.3.6",
     "@nestjs/bullmq": "^11.0.4",

@@ -1,14 +1,12 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import Image from '@tiptap/extension-image';
+import Link from '@tiptap/extension-link';
+import TaskItem from '@tiptap/extension-task-item';
+import TaskList from '@tiptap/extension-task-list';
+import UnderlineExtension from '@tiptap/extension-underline';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
-import UnderlineExtension from '@tiptap/extension-underline';
-import Link from '@tiptap/extension-link';
-import Image from '@tiptap/extension-image';
-import TaskList from '@tiptap/extension-task-list';
-import TaskItem from '@tiptap/extension-task-item';
 import { lowlight } from 'lowlight';
-import type { EditorConfig, EditorChangeEvent } from '@inkweaver/editor-core';
 import {
   Bold,
   Italic,
@@ -37,6 +35,10 @@ import {
   ChevronRight,
   ChevronLeft,
 } from 'lucide-react';
+import React, { useState, useCallback, useRef, useEffect, useId } from 'react';
+
+import type { EditorConfig, EditorChangeEvent } from '@inkweaver/editor-core';
+import type { Editor } from '@tiptap/core';
 import './InkWeaverEditor.css';
 
 interface InkWeaverEditorProps extends EditorConfig {
@@ -77,6 +79,7 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
+  const linkDialogTitleId = useId();
 
   const editor = useEditor({
     extensions: [
@@ -150,9 +153,23 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
     };
   }, [showSidebar]);
 
-  const updateOutline = useCallback((editorInstance: any) => {
+  useEffect(() => {
+    if (!showLinkModal) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowLinkModal(false);
+        setLinkUrl('');
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [showLinkModal]);
+
+  const updateOutline = useCallback((editorInstance: Editor) => {
     const headings: OutlineItem[] = [];
-    editorInstance.state.doc.descendants((node: any, pos: number) => {
+    editorInstance.state.doc.descendants((node, pos: number) => {
       if (node.type.name === 'heading') {
         headings.push({
           id: `heading-${pos}`,
@@ -215,9 +232,11 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
       <div className={`editor-sidebar left ${showSidebar ? 'open' : ''} ${leftSidebarCollapsed ? 'collapsed' : ''}`}>
         {leftSidebarCollapsed ? (
           <button
+            type="button"
             className="sidebar-expand-btn"
             onClick={() => setLeftSidebarCollapsed(false)}
             title="展开目录"
+            aria-label="展开目录"
           >
             <ChevronRight size={16} />
           </button>
@@ -229,9 +248,11 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
                 目录
               </span>
               <button
+                type="button"
                 className="sidebar-close"
                 onClick={() => mobileMode ? setShowSidebar(false) : setLeftSidebarCollapsed(true)}
                 title="折叠目录"
+                aria-label="折叠目录"
               >
                 <ChevronLeft size={16} />
               </button>
@@ -264,33 +285,45 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
       )}
 
       <div className="editor-main">
-        <div className="editor-top-toolbar">
+        <div className="editor-top-toolbar" role="toolbar" aria-label="编辑工具栏">
           <div className="toolbar-group">
             <button
+              type="button"
               className={`toolbar-btn ${editor.isActive('bold') ? 'active' : ''}`}
               onClick={() => editor.chain().focus().toggleBold().run()}
               title="加粗 (Ctrl+B)"
+              aria-label="加粗"
+              aria-pressed={editor.isActive('bold')}
             >
               <Bold size={16} />
             </button>
             <button
+              type="button"
               className={`toolbar-btn ${editor.isActive('italic') ? 'active' : ''}`}
               onClick={() => editor.chain().focus().toggleItalic().run()}
               title="斜体 (Ctrl+I)"
+              aria-label="斜体"
+              aria-pressed={editor.isActive('italic')}
             >
               <Italic size={16} />
             </button>
             <button
+              type="button"
               className={`toolbar-btn ${editor.isActive('underline') ? 'active' : ''}`}
               onClick={() => editor.chain().focus().toggleUnderline().run()}
               title="下划线"
+              aria-label="下划线"
+              aria-pressed={editor.isActive('underline')}
             >
               <UnderlineIcon size={16} />
             </button>
             <button
+              type="button"
               className={`toolbar-btn ${editor.isActive('strike') ? 'active' : ''}`}
               onClick={() => editor.chain().focus().toggleStrike().run()}
               title="删除线"
+              aria-label="删除线"
+              aria-pressed={editor.isActive('strike')}
             >
               <Strikethrough size={16} />
             </button>
@@ -300,23 +333,32 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
 
           <div className="toolbar-group">
             <button
+              type="button"
               className={`toolbar-btn ${editor.isActive('heading', { level: 1 }) ? 'active' : ''}`}
               onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
               title="标题1"
+              aria-label="标题 1"
+              aria-pressed={editor.isActive('heading', { level: 1 })}
             >
               <Heading1 size={16} />
             </button>
             <button
+              type="button"
               className={`toolbar-btn ${editor.isActive('heading', { level: 2 }) ? 'active' : ''}`}
               onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
               title="标题2"
+              aria-label="标题 2"
+              aria-pressed={editor.isActive('heading', { level: 2 })}
             >
               <Heading2 size={16} />
             </button>
             <button
+              type="button"
               className={`toolbar-btn ${editor.isActive('heading', { level: 3 }) ? 'active' : ''}`}
               onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
               title="标题3"
+              aria-label="标题 3"
+              aria-pressed={editor.isActive('heading', { level: 3 })}
             >
               <Heading3 size={16} />
             </button>
@@ -326,23 +368,32 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
 
           <div className="toolbar-group">
             <button
+              type="button"
               className={`toolbar-btn ${editor.isActive('bulletList') ? 'active' : ''}`}
               onClick={() => editor.chain().focus().toggleBulletList().run()}
               title="无序列表"
+              aria-label="无序列表"
+              aria-pressed={editor.isActive('bulletList')}
             >
               <List size={16} />
             </button>
             <button
+              type="button"
               className={`toolbar-btn ${editor.isActive('orderedList') ? 'active' : ''}`}
               onClick={() => editor.chain().focus().toggleOrderedList().run()}
               title="有序列表"
+              aria-label="有序列表"
+              aria-pressed={editor.isActive('orderedList')}
             >
               <ListOrdered size={16} />
             </button>
             <button
+              type="button"
               className={`toolbar-btn ${editor.isActive('taskList') ? 'active' : ''}`}
               onClick={() => editor.chain().focus().toggleTaskList().run()}
               title="任务列表"
+              aria-label="任务列表"
+              aria-pressed={editor.isActive('taskList')}
             >
               <ListTodo size={16} />
             </button>
@@ -352,23 +403,31 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
 
           <div className="toolbar-group">
             <button
+              type="button"
               className={`toolbar-btn ${editor.isActive('blockquote') ? 'active' : ''}`}
               onClick={() => editor.chain().focus().toggleBlockquote().run()}
               title="引用"
+              aria-label="引用"
+              aria-pressed={editor.isActive('blockquote')}
             >
               <Quote size={16} />
             </button>
             <button
+              type="button"
               className={`toolbar-btn ${editor.isActive('codeBlock') ? 'active' : ''}`}
               onClick={() => editor.chain().focus().toggleCodeBlock().run()}
               title="代码块"
+              aria-label="代码块"
+              aria-pressed={editor.isActive('codeBlock')}
             >
               <Code size={16} />
             </button>
             <button
+              type="button"
               className="toolbar-btn"
               onClick={() => editor.chain().focus().setHorizontalRule().run()}
               title="分隔线"
+              aria-label="分割线"
             >
               <Minus size={16} />
             </button>
@@ -378,16 +437,21 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
 
           <div className="toolbar-group">
             <button
+              type="button"
               className={`toolbar-btn ${editor.isActive('link') ? 'active' : ''}`}
               onClick={handleSetLink}
               title="链接"
+              aria-label="插入链接"
+              aria-pressed={editor.isActive('link')}
             >
               <Link2 size={16} />
             </button>
             <button
+              type="button"
               className="toolbar-btn"
               onClick={addImage}
               title="图片"
+              aria-label="插入图片"
             >
               <ImageIcon size={16} />
             </button>
@@ -397,16 +461,20 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
 
           <div className="toolbar-group">
             <button
+              type="button"
               className="toolbar-btn"
               onClick={() => editor.chain().focus().undo().run()}
               title="撤销 (Ctrl+Z)"
+              aria-label="撤销"
             >
               <Undo size={16} />
             </button>
             <button
+              type="button"
               className="toolbar-btn"
               onClick={() => editor.chain().focus().redo().run()}
               title="重做 (Ctrl+Y)"
+              aria-label="重做"
             >
               <Redo size={16} />
             </button>
@@ -415,9 +483,11 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
           <div className="toolbar-divider" />
 
           <button
+            type="button"
             className="toolbar-btn sidebar-toggle"
             onClick={() => setShowSidebar(true)}
             title="目录"
+            aria-label="打开目录"
           >
             <Menu size={16} />
           </button>
@@ -427,6 +497,7 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
           {showTitleInput && (
             <input
               type="text"
+              aria-label="文档标题"
               className="editor-title-input"
               value={title}
               onChange={(e) => onTitleChange?.(e.target.value)}
@@ -441,10 +512,12 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
 
       <div className={`editor-sidebar right ${rightSidebarCollapsed ? 'collapsed' : ''}`}>
         {rightSidebarCollapsed ? (
-          <button
-            className="sidebar-expand-btn"
-            onClick={() => setRightSidebarCollapsed(false)}
-            title="展开AI助手"
+            <button
+              type="button"
+              className="sidebar-expand-btn"
+              onClick={() => setRightSidebarCollapsed(false)}
+              title="展开AI助手"
+              aria-label="展开 AI 助手"
           >
             <ChevronLeft size={16} />
           </button>
@@ -456,9 +529,11 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
                 AI 助手
               </span>
               <button
+                type="button"
                 className="sidebar-close"
                 onClick={() => setRightSidebarCollapsed(true)}
                 title="折叠AI助手"
+                aria-label="折叠 AI 助手"
               >
                 <ChevronRight size={16} />
               </button>
@@ -519,19 +594,31 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
         )}
       </div>
 
-      {showLinkModal && (
-        <div className="link-modal-overlay" onClick={cancelLink}>
-          <div className="link-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="link-modal-header">
-              <h3>插入链接</h3>
-              <button className="link-modal-close" onClick={cancelLink}>
+          {showLinkModal && (
+            <div className="link-modal-overlay" onClick={cancelLink}>
+              <div
+                className="link-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={linkDialogTitleId}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="link-modal-header">
+                  <h3 id={linkDialogTitleId}>插入链接</h3>
+                  <button
+                    type="button"
+                    className="link-modal-close"
+                    onClick={cancelLink}
+                    aria-label="关闭插入链接对话框"
+                  >
                 <X size={16} />
               </button>
             </div>
             <div className="link-modal-body">
-              <input
-                type="url"
-                className="link-modal-input"
+                  <input
+                    type="url"
+                    aria-label="链接地址"
+                    className="link-modal-input"
                 value={linkUrl}
                 onChange={(e) => setLinkUrl(e.target.value)}
                 placeholder="请输入链接地址"
@@ -539,10 +626,10 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
               />
             </div>
             <div className="link-modal-footer">
-              <button className="link-modal-btn cancel" onClick={cancelLink}>
+                  <button type="button" className="link-modal-btn cancel" onClick={cancelLink}>
                 取消
               </button>
-              <button className="link-modal-btn confirm" onClick={confirmLink}>
+                  <button type="button" className="link-modal-btn confirm" onClick={confirmLink}>
                 确定
               </button>
             </div>

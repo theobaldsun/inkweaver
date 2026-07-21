@@ -2,34 +2,66 @@
  * 文档编辑页：TipTap 编辑、Yjs 本地快照与云端同步。
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { documentApi, storageApi } from '@inkweaver/api';
 import { InkWeaverEditor } from '@inkweaver/editor-web';
-import '@inkweaver/editor-web/dist/index.css';
+import { sanitizeDocumentHtml } from '../utils/sanitizeDocumentHtml';
 import { authService } from '@inkweaver/services';
-import { storageApi } from '@inkweaver/api';
-import { documentService } from '../services/apiClient';
-import { getAssetUrl } from '../utils/assetUrl';
+import {
+  createPushThrottle,
+  type CreateDocumentRequest,
+  type Document,
+} from '@inkweaver/shared';
+import { ArrowLeft, Eye, RefreshCw, Save } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import * as Y from 'yjs';
+
+import '@inkweaver/editor-web/dist/index.css';
+
+import { showAlert } from '../components/CustomModal';
+import { EditorMoreMenu } from '../components/EditorMoreMenu';
 import { showToast } from '../components/Toast';
+import { APP_PUBLIC_URL } from '../config/env';
+import { documentService } from '../services/apiClient';
 import {
   syncDocument,
   getYDoc,
   localDB,
   joinDocRoom,
+  leaveDocRoom,
   onUpdate,
+  offUpdate,
   onSyncConflict,
   CLIENT_ID,
   isWebSocketConnected,
+  onConnectionChange,
+  SYNC_REPLAY_ORIGIN,
+  syncEngine,
 } from '../services/syncService';
-import { createPushThrottle } from '@inkweaver/shared';
-import { documentApi } from '@inkweaver/api';
-import { APP_PUBLIC_URL } from '../config/env';
-import { EditorMoreMenu } from '../components/EditorMoreMenu';
-import * as Y from 'yjs';
-import { syncEngine } from '../services/syncService';
-import type { Document, CreateDocumentRequest } from '@inkweaver/shared';
-import { showAlert } from '../components/CustomModal';
-import { ArrowLeft, Save, RefreshCw, Eye } from 'lucide-react';
+import { getAssetUrl } from '../utils/assetUrl';
+
+/**
+ * 将节流缓冲区内的 Yjs updates 立即落盘为 pending，避免切文档丢写。
+ * 输入：docId、缓冲 Map；输出：无（异步写本地 DB）
+ */
+function flushPendingUpdateBuffer(
+  docId: string,
+  buffer: Map<string, Uint8Array[]>,
+): void {
+  const pendingUpdates = buffer.get(docId) ?? [];
+  if (pendingUpdates.length === 0) return;
+  buffer.delete(docId);
+  const mergedUpdate = Y.mergeUpdates(pendingUpdates);
+  void localDB
+    .saveUpdate({
+      docId,
+      update: mergedUpdate,
+      clientId: CLIENT_ID,
+      timestamp: Date.now(),
+      pending: true,
+    })
+    .catch(console.error);
+}
 
 const DocumentEditPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -46,6 +78,7 @@ const DocumentEditPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [socketConnected, setSocketConnected] = useState(() => isWebSocketConnected());
   const [showPreview, setShowPreview] = useState(false);
   const [editorSyncKey, setEditorSyncKey] = useState(0);
   const yDocRef = useRef<Y.Doc | null>(null);
@@ -53,7 +86,9 @@ const DocumentEditPage: React.FC = () => {
   const metaProjectionRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isApplyingRemoteRef = useRef(false);
   const initializedTempDocs = useRef<Set<string>>(new Set());
-  const pushPendingThrottleRef = useRef<ReturnType<typeof createPushThrottle<(docId: string, update: Uint8Array) => void>> | null>(null);
+  const tempUpdateDisposers = useRef<Map<string, () => void>>(new Map());
+  const pendingUpdateBufferRef = useRef<Map<string, Uint8Array[]>>(new Map());
+  const pushPendingThrottleRef = useRef<ReturnType<typeof createPushThrottle<(docId: string) => void>> | null>(null);
 
   const [showRestoreBanner, setShowRestoreBanner] = useState(false);
   const [pendingTempDoc, setPendingTempDoc] = useState<Document | null>(null);
@@ -83,7 +118,9 @@ const DocumentEditPage: React.FC = () => {
     loadUserInfo();
   }, []);
 
-  const initTempDocument = useCallback((tempId: string, yDoc: Y.Doc, skipWebSocket = false) => {
+  useEffect(() => onConnectionChange(setSocketConnected), []);
+
+  const initTempDocument = useCallback((tempId: string, yDoc: Y.Doc) => {
     if (initializedTempDocs.current.has(tempId)) return;
     initializedTempDocs.current.add(tempId);
 
@@ -97,6 +134,10 @@ const DocumentEditPage: React.FC = () => {
       }).catch(console.error);
     };
     yDoc.on('update', handleUpdate);
+    tempUpdateDisposers.current.set(tempId, () => {
+      yDoc.off('update', handleUpdate);
+      tempUpdateDisposers.current.delete(tempId);
+    });
   }, []);
 
   const loadRecentTempDocument = useCallback(async () => {
@@ -157,6 +198,9 @@ const DocumentEditPage: React.FC = () => {
   }, [pendingTempDoc, document.userId]);
 
   useEffect(() => {
+    let disposed = false;
+    let cleanupListeners: (() => void) | undefined;
+
     const loadDocument = async () => {
       if (id) {
         const isTempDoc = id.startsWith('temp-');
@@ -179,7 +223,7 @@ const DocumentEditPage: React.FC = () => {
             const title = yDoc.getMap('metadata').get('title') as string || localDoc?.title || '';
             const doc = { ...localDoc, title, content, id };
             setDocument(doc);
-            initTempDocument(id, yDoc, true);
+            initTempDocument(id, yDoc);
           } catch (error) {
             console.error('临时文档加载失败:', error);
           } finally {
@@ -231,31 +275,33 @@ const DocumentEditPage: React.FC = () => {
           // 先结束 loading，WebSocket 在后台连接（失败不影响编辑）
           setLoading(false);
 
-          void joinDocRoom(id).then(() => {
-            onUpdate(id, (updates: Uint8Array[]) => {
-              for (const update of updates) Y.applyUpdate(yDoc, update);
-            });
-          });
+          const handleRemoteUpdates = (updates: Uint8Array[]) => {
+            for (const update of updates) {
+              Y.applyUpdate(yDoc, update, SYNC_REPLAY_ORIGIN);
+            }
+          };
+          void joinDocRoom(id)
+            .then(() => {
+              if (!disposed) onUpdate(id, handleRemoteUpdates);
+            })
+            .catch(console.error);
 
           if (!pushPendingThrottleRef.current) {
             pushPendingThrottleRef.current = createPushThrottle(
-              (docId: string, update: Uint8Array) => {
-                localDB
-                  .saveUpdate({
-                    docId,
-                    update,
-                    clientId: CLIENT_ID,
-                    timestamp: Date.now(),
-                    pending: true,
-                  })
-                  .catch(console.error);
+              (docId: string) => {
+                flushPendingUpdateBuffer(docId, pendingUpdateBufferRef.current);
               },
               400,
             );
           }
 
           const handleUpdate = (update: Uint8Array, origin: unknown) => {
-            pushPendingThrottleRef.current?.(id, update);
+            if (origin !== SYNC_REPLAY_ORIGIN) {
+              const pendingUpdates = pendingUpdateBufferRef.current.get(id) ?? [];
+              pendingUpdates.push(update);
+              pendingUpdateBufferRef.current.set(id, pendingUpdates);
+              pushPendingThrottleRef.current?.(id);
+            }
             if (origin === 'local-edit') return;
             isApplyingRemoteRef.current = true;
             const content = yDoc.getText('content').toString();
@@ -276,6 +322,17 @@ const DocumentEditPage: React.FC = () => {
 
           yDoc.on('update', handleUpdate);
           yMap.observe(handleMapUpdate);
+          cleanupListeners = () => {
+            flushPendingUpdateBuffer(id, pendingUpdateBufferRef.current);
+            void leaveDocRoom(id);
+            offUpdate(id, handleRemoteUpdates);
+            yDoc.off('update', handleUpdate);
+            yMap.unobserve(handleMapUpdate);
+          };
+          if (disposed) {
+            cleanupListeners();
+            cleanupListeners = undefined;
+          }
         } catch (error) {
           console.error('文档加载失败:', error);
           setLoading(false);
@@ -289,7 +346,15 @@ const DocumentEditPage: React.FC = () => {
         setLoading(false);
       }
     };
-    loadDocument();
+    void loadDocument();
+    return () => {
+      disposed = true;
+      if (id?.startsWith('temp-')) {
+        tempUpdateDisposers.current.get(id)?.();
+      }
+      cleanupListeners?.();
+      cleanupListeners = undefined;
+    };
   }, [id, loadRecentTempDocument, initTempDocument, navigate]);
 
   useEffect(() => {
@@ -557,7 +622,7 @@ const DocumentEditPage: React.FC = () => {
         
         <div className="editor-header-center">
           <span className="document-status">
-            {isWebSocketConnected() ? '🟢 已连接' : '🔴 离线'}
+            {socketConnected ? '🟢 已连接' : '🔴 离线'}
           </span>
         </div>
         
@@ -621,7 +686,7 @@ const DocumentEditPage: React.FC = () => {
             <div className="preview-title">{document.title || '无标题'}</div>
             <div 
               className="preview-body" 
-              dangerouslySetInnerHTML={{ __html: document.content || '<p>暂无内容</p>' }}
+              dangerouslySetInnerHTML={{ __html: sanitizeDocumentHtml(document.content || '<p>暂无内容</p>') }}
             />
           </div>
         ) : (

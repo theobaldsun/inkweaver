@@ -4,6 +4,7 @@
 
 import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { MIN_PASSWORD_LENGTH, isPasswordLengthValid } from '@inkweaver/shared';
 import { authApi, getApiErrorMessage } from '@inkweaver/api';
 import { Lock, Eye, EyeOff } from 'lucide-react';
 import '../styles/auth.css';
@@ -25,8 +26,8 @@ export const ResetPasswordPage: React.FC = () => {
       setError('链接无效或已过期');
       return;
     }
-    if (password.length < 8) {
-      setError('密码至少 8 位');
+    if (!isPasswordLengthValid(password)) {
+      setError(`密码至少 ${MIN_PASSWORD_LENGTH} 位`);
       return;
     }
     if (password !== confirm) {
@@ -71,7 +72,8 @@ export const ResetPasswordPage: React.FC = () => {
               <Lock size={18} />
               <input
                 type={showPassword ? 'text' : 'password'}
-                placeholder="新密码（至少 8 位）"
+                placeholder={`新密码（至少 ${MIN_PASSWORD_LENGTH} 位）`}
+                minLength={MIN_PASSWORD_LENGTH}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="new-password"

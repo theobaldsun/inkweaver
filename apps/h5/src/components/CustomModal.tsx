@@ -1,5 +1,7 @@
-import React, { ReactNode, useSyncExternalStore } from 'react';
-import { createRoot, Root } from 'react-dom/client';
+import React, { useSyncExternalStore } from 'react';
+import type { ReactNode } from 'react';
+import { createRoot } from 'react-dom/client';
+import type { Root } from 'react-dom/client';
 import { X, AlertCircle, CheckCircle, Info, AlertTriangle } from 'lucide-react';
 
 export interface ModalProps {

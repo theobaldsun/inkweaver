@@ -1,5 +1,5 @@
 /**
- * 应用级环境变量与启动期弱校验。
+ * 应用级环境变量与启动期密钥校验。
  */
 
 import { ConfigService } from '@nestjs/config';
@@ -30,18 +30,56 @@ export function getAppRuntimeConfig(config: ConfigService): AppRuntimeConfig {
 }
 
 /**
- * 生产环境对关键密钥做非空/弱密钥告警（不阻断启动，避免误伤本地）。
+ * 判断密钥是否为空或占位弱值。
+ * 输入：密钥字符串；输出：是否弱密钥
  */
+export function isWeakSecret(value: string | undefined): boolean {
+  if (!value) return true;
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized.length === 0 ||
+    normalized.includes('change-me') ||
+    normalized === 'fallback-secret-key'
+  );
+}
+
+/**
+ * 生产环境强制强密钥：弱/空则抛错阻断启动。
+ * 非 production 仅 warn。
+ *
+ * 输入：ConfigService
+ * 输出：无（副作用：warn 或 throw）
+ */
+export function assertStrongSecretsInProduction(config: ConfigService): void {
+  const nodeEnv = config.get<string>('NODE_ENV', 'development');
+  const jwt = config.get<string>('JWT_SECRET');
+  const dbPass = config.get<string>('DB_PASSWORD');
+  const redisPass = config.get<string>('REDIS_PASSWORD');
+
+  const problems: string[] = [];
+  if (isWeakSecret(jwt)) {
+    problems.push('JWT_SECRET 未设置或为占位弱密钥');
+  }
+  if (isWeakSecret(dbPass)) {
+    problems.push('DB_PASSWORD 未设置或为占位弱密钥');
+  }
+  // Redis 密码仅在显式配置时校验（允许本地无密码 Redis）
+  if (redisPass !== undefined && redisPass !== '' && isWeakSecret(redisPass)) {
+    problems.push('REDIS_PASSWORD 为占位弱密钥');
+  }
+
+  if (problems.length === 0) return;
+
+  if (nodeEnv === 'production') {
+    throw new Error(`生产环境拒绝弱密钥启动: ${problems.join('; ')}`);
+  }
+
+  for (const problem of problems) {
+    logger.warn(problem);
+  }
+}
+
+/** @deprecated 使用 assertStrongSecretsInProduction */
 export function warnWeakSecretsIfProduction(config: ConfigService): void {
-  if (config.get<string>('NODE_ENV') !== 'production') return;
-
-  const jwt = config.get<string>('JWT_SECRET', '');
-  const dbPass = config.get<string>('DB_PASSWORD', '');
-
-  if (!jwt || jwt.includes('change-me') || jwt === 'fallback-secret-key') {
-    logger.warn('JWT_SECRET 未设置或为占位符，生产环境请使用强随机密钥');
-  }
-  if (!dbPass || dbPass.includes('change-me')) {
-    logger.warn('DB_PASSWORD 未设置或为占位符');
-  }
+  assertStrongSecretsInProduction(config);
 }

@@ -22,8 +22,7 @@
   },
   "dependencies": {
     "@inkweaver/services": "workspace:*",
-    "@inkweaver/shared": "workspace:*",
-    "@inkweaver/platform": "workspace:*"
+    "@inkweaver/shared": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.5.1",

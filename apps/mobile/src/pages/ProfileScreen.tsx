@@ -81,7 +81,6 @@ export const ProfileScreen: React.FC = () => {
       
       const updatedUser = await userService.updateProfile({
         name: editForm.name,
-        email: editForm.email,
       });
       
       setUser(updatedUser);
@@ -413,7 +412,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 40,
     paddingHorizontal: 24,
-    background: 'linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%)',
+    backgroundColor: '#3b82f6',
     marginHorizontal: 8,
     marginTop: 8,
     borderRadius: 24,
@@ -596,7 +595,7 @@ const styles = StyleSheet.create({
   modalButtonConfirm: {
     paddingHorizontal: 24,
     paddingVertical: 12,
-    background: 'linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%)',
+    backgroundColor: '#3b82f6',
     borderRadius: 10,
     shadowColor: '#3b82f6',
     shadowOffset: { width: 0, height: 2 },

@@ -5,6 +5,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { LoginRequest, RegisterRequest } from '@inkweaver/shared';
+import { MIN_PASSWORD_LENGTH, isPasswordLengthValid } from '@inkweaver/shared';
 import { authApi, getApiErrorMessage } from '@inkweaver/api';
 import { authService } from '@inkweaver/services';
 import { platformAdapter } from '../adapters/platformAdapter';
@@ -96,10 +97,14 @@ export const AuthPage: React.FC = () => {
     }
   };
 
-  const isLoginValid = Boolean(loginData.email && loginData.password.length >= 8);
+  const isLoginValid = Boolean(loginData.email && isPasswordLengthValid(loginData.password));
   const isRegisterValid =
-    Boolean(registerData.email && registerData.password.length >= 8 && registerData.name.trim()) &&
-    confirmPassword.length >= 8 &&
+    Boolean(
+      registerData.email &&
+        isPasswordLengthValid(registerData.password) &&
+        registerData.name.trim(),
+    ) &&
+    isPasswordLengthValid(confirmPassword) &&
     registerData.password === confirmPassword;
 
   const renderPasswordToggle = (visible: boolean, onToggle: () => void) => (
@@ -263,10 +268,10 @@ export const AuthPage: React.FC = () => {
                       className="auth-field__input"
                       value={loginData.password}
                       onChange={(e) => setLoginData((p) => ({ ...p, password: e.target.value }))}
-                      placeholder="至少 8 位"
+                      placeholder={`至少 ${MIN_PASSWORD_LENGTH} 位`}
                       autoComplete="current-password"
                       required
-                      minLength={8}
+                      minLength={MIN_PASSWORD_LENGTH}
                       disabled={loading}
                     />
                     {renderPasswordToggle(showPassword, () => setShowPassword((v) => !v))}
@@ -362,10 +367,10 @@ export const AuthPage: React.FC = () => {
                       className="auth-field__input"
                       value={registerData.password}
                       onChange={(e) => setRegisterData((p) => ({ ...p, password: e.target.value }))}
-                      placeholder="至少 8 位"
+                      placeholder={`至少 ${MIN_PASSWORD_LENGTH} 位`}
                       autoComplete="new-password"
                       required
-                      minLength={8}
+                      minLength={MIN_PASSWORD_LENGTH}
                       disabled={loading}
                     />
                     {renderPasswordToggle(showPassword, () => setShowPassword((v) => !v))}
@@ -389,7 +394,7 @@ export const AuthPage: React.FC = () => {
                       placeholder="再次输入密码"
                       autoComplete="new-password"
                       required
-                      minLength={8}
+                      minLength={MIN_PASSWORD_LENGTH}
                       disabled={loading}
                     />
                     {renderPasswordToggle(showConfirmPassword, () => setShowConfirmPassword((v) => !v))}

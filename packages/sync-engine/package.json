@@ -16,6 +16,7 @@
   "scripts": {
     "build": "tsup --config tsup.config.ts",
     "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "test": "node --import tsx --test src/syncEngine.test.ts",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

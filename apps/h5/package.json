@@ -16,7 +16,6 @@
     "@inkweaver/assets": "workspace:*",
     "@inkweaver/db-adapter": "workspace:*",
     "@inkweaver/editor-web": "workspace:*",
-    "@inkweaver/platform": "workspace:*",
     "@inkweaver/services": "workspace:*",
     "@inkweaver/shared": "workspace:*",
     "@inkweaver/sync-engine": "workspace:*",

@@ -1,5 +1,5 @@
 import { userApi, type UpdateUserRequest, type ChangePasswordRequest, type StorageStats } from '@inkweaver/api';
-import type { User } from '@inkweaver/shared';
+import { formatStorageSize, type User } from '@inkweaver/shared';
 
 export const userService = {
   async getProfile(): Promise<User> {
@@ -18,4 +18,5 @@ export const userService = {
     return userApi.getStorageStats();
   },
 
-  formatStorageSize(bytes: number): string
+  formatStorageSize,
+};

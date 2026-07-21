@@ -15,6 +15,7 @@ import { Folder } from '../documents/entity/folder.entity';
 import { StorageController } from './storage.controller';
 import { StorageUsageService } from './storage-usage.service';
 import { StorageAssetService } from './storage-asset.service';
+import { ObjectStorageService } from './object-storage.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { getJwtModuleOptions } from '../../config/jwt.config';
 
@@ -26,7 +27,7 @@ import { getJwtModuleOptions } from '../../config/jwt.config';
     JwtModule.register(getJwtModuleOptions()),
   ],
   controllers: [StorageController],
-  providers: [StorageUsageService, StorageAssetService],
-  exports: [StorageUsageService, StorageAssetService],
+  providers: [StorageUsageService, StorageAssetService, ObjectStorageService],
+  exports: [StorageUsageService, StorageAssetService, ObjectStorageService],
 })
 export class StorageModule {}
