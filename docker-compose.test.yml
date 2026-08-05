@@ -2,7 +2,7 @@ name: inkweaver-test
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: inkweaver_test
       POSTGRES_PASSWORD: inkweaver_test

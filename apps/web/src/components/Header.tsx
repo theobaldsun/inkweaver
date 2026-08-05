@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Plus, User, X, LogOut } from 'lucide-react';
+import { Search, Plus, User, X, LogOut, Sparkles } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/apiClient';
@@ -68,6 +68,15 @@ const Header: React.FC = () => {
         </div>
 
         <div className="header-right">
+          <button
+            type="button"
+            className="header-btn"
+            onClick={() => navigate('/ai')}
+            title="笔记问答"
+            aria-label="笔记问答"
+          >
+            <Sparkles size={20} />
+          </button>
           <button
             type="button"
             className="header-btn" 

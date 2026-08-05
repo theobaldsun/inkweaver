@@ -7,7 +7,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { InkWeaverEditor } from '@inkweaver/editor-web';
 import { documentApi } from '@inkweaver/api';
 import { authService } from '@inkweaver/services';
-import { syncDocument, getYDoc, localDB, joinDocRoom, onUpdate, CLIENT_ID, isWebSocketConnected } from '../services/syncService';
+import { syncDocument, getYDoc, localDB, subscribeDocRoom, CLIENT_ID, isWebSocketConnected, SYNC_REPLAY_ORIGIN } from '../services/syncService';
 import * as Y from 'yjs';
 import { syncEngine } from '../services/syncService';
 import type { Document, CreateDocumentRequest } from '@inkweaver/shared';
@@ -30,6 +30,14 @@ const DocumentEditPage: React.FC = () => {
   const [syncing, setSyncing] = useState<boolean>(false);
   const yDocRef = useRef<Y.Doc | null>(null);
   const initializedTempDocs = useRef<Set<string>>(new Set());
+  /**
+   * 同步指向最新 document state，供 yMap.observe / handleContentChange 等闭包回调读取
+   * 避免 setDocument(prev => {...}) updater 内部执行 side effect（StrictMode 双调用安全）
+   */
+  const documentRef = useRef(document);
+  documentRef.current = document;
+  // 与 Web 端对齐：保存 temp 文档的 update 监听反注册函数，卸载时清理避免泄漏
+  const tempUpdateDisposers = useRef<Map<string, () => void>>(new Map());
 
   // Banner 相关状态
   const [showRestoreBanner, setShowRestoreBanner] = useState(false);
@@ -50,30 +58,41 @@ const DocumentEditPage: React.FC = () => {
     loadUserInfo();
   }, []);
 
-  // 统一初始化临时文档
-  const initTempDocument = useCallback((tempId: string, yDoc: Y.Doc, skipWebSocket = false) => {
+  // 统一初始化临时文档：注册 update 监听将变更写入 localDB，并登记 disposer 供卸载时清理
+  const initTempDocument = useCallback((tempId: string, yDoc: Y.Doc) => {
     if (initializedTempDocs.current.has(tempId)) return;
     initializedTempDocs.current.add(tempId);
 
-    // 临时文档不加入WebSocket房间，避免产生需要上传的更新
-    // if (!skipWebSocket) {
-    //   joinDocRoom(tempId).catch(error => {
-    //     console.error('Failed to join WebSocket room for temp document:', error);
-    //   });
-    // }
-
-    // 临时文档的更新只在本地保存，不上传到服务端
+    // 临时文档的更新只在本地保存，标记 pending:false 表示不上传服务端
     const handleUpdate = (update: Uint8Array) => {
       localDB.saveUpdate({
         docId: tempId,
         update,
         clientId: CLIENT_ID,
         timestamp: Date.now(),
-        pending: false, // 临时文档的更新标记为已同步，不上传
+        pending: false,
       }).catch(console.error);
     };
     yDoc.on('update', handleUpdate);
+    tempUpdateDisposers.current.set(tempId, () => {
+      yDoc.off('update', handleUpdate);
+      tempUpdateDisposers.current.delete(tempId);
+    });
   }, []);
+
+  // 新建文档场景下稳定持有 tempId，避免散落生成导致 document.id 被反复写回
+  // tempId 仅在此 ref 内流转，不写入 document state，直到 saveDocument 成功转正
+  const tempIdRef = useRef<string | null>(null);
+
+  // 首次调用时生成 tempId 并初始化 Y.Doc，后续调用稳定返回同一值
+  const ensureTempId = useCallback((): string => {
+    if (tempIdRef.current) return tempIdRef.current;
+    const newId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    tempIdRef.current = newId;
+    const yDoc = getYDoc(newId);
+    initTempDocument(newId, yDoc);
+    return newId;
+  }, [initTempDocument]);
 
   // 从本地存储加载最近的临时文档
   const loadRecentTempDocument = useCallback(async () => {
@@ -134,13 +153,16 @@ const DocumentEditPage: React.FC = () => {
       content: '',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      userId: document.userId,
+      userId: documentRef.current.userId,
       lastUpdateId: 0,
     });
-  }, [pendingTempDoc, document.userId]);
+  }, [pendingTempDoc]);
 
   // 加载文档（已有 id）
   useEffect(() => {
+    let disposed = false;
+    let cleanupListeners: (() => void) | undefined;
+
     const loadDocument = async () => {
       if (id) {
         // 检查是否为临时文档（本地草稿）
@@ -168,7 +190,7 @@ const DocumentEditPage: React.FC = () => {
             const doc = { ...localDoc, title, content, id };
             setDocument(doc);
             // 初始化临时文档的更新监听（仅本地保存，不加入 WebSocket 房间）
-            initTempDocument(id, yDoc, true);
+            initTempDocument(id, yDoc);
           } catch (error) {
             console.error('临时文档加载失败:', error);
           } finally {
@@ -219,36 +241,58 @@ const DocumentEditPage: React.FC = () => {
           // 先展示内容，WebSocket 后台连接
           setLoading(false);
 
-          void joinDocRoom(id).then(() => {
-            onUpdate(id, (updates: Uint8Array[]) => {
-              for (const update of updates) Y.applyUpdate(yDoc, update);
-            });
+          let remoteUpdateDisposer: (() => void) | undefined;
+          // subscribeDocRoom 内部用引用计数管理 join-doc/leave-doc，
+          // 自动消除 await connectSocket 期间切走导致的"加入后永不离开"竞态
+          remoteUpdateDisposer = subscribeDocRoom(id, (updates: Uint8Array[]) => {
+            for (const update of updates) Y.applyUpdate(yDoc, update, SYNC_REPLAY_ORIGIN);
           });
 
-          const handleUpdate = (update: Uint8Array) => {
-            localDB.saveUpdate({
-              docId: id,
-              update,
-              clientId: CLIENT_ID,
-              timestamp: Date.now(),
-              pending: true,
-            }).catch(console.error);
+          const handleUpdate = (update: Uint8Array, origin: unknown) => {
+            // 远端回放（SYNC_REPLAY_ORIGIN）不标记 pending，避免推回服务器
+            if (origin === 'local-edit') {
+              return;
+            }
+            if (origin !== 'SYNC_REPLAY_ORIGIN') {
+              localDB.saveUpdate({
+                docId: id,
+                update,
+                clientId: CLIENT_ID,
+                timestamp: Date.now(),
+                pending: true,
+              }).catch(console.error);
+            }
             const content = yDoc.getText('content').toString();
-            setDocument(prev => ({ ...prev, content, updatedAt: new Date().toISOString() }));
+            setDocument(prev => {
+              if (prev.content === content) return prev;
+              return { ...prev, content, updatedAt: new Date().toISOString() };
+            });
           };
 
           const yMap = yDoc.getMap('metadata');
           const handleMapUpdate = () => {
             const newTitle = yMap.get('title') as string || '';
-            setDocument(prev => {
-              const updated = { ...prev, title: newTitle, updatedAt: new Date().toISOString() };
-              localDB.saveDoc(updated).catch(console.error);
-              return updated;
-            });
+            const prev = documentRef.current;
+            if (prev.title === newTitle) return;
+            const updated = { ...prev, title: newTitle, updatedAt: new Date().toISOString() };
+            documentRef.current = updated;
+            localDB.saveDoc(updated).catch(console.error);
+            setDocument(updated);
           };
 
           yDoc.on('update', handleUpdate);
           yMap.observe(handleMapUpdate);
+
+          cleanupListeners = () => {
+            yDoc.off('update', handleUpdate);
+            yMap.unobserve(handleMapUpdate);
+            // unsubscribeDocRoom 同时反注册监听并按引用计数决定是否 emit leave-doc
+            remoteUpdateDisposer?.();
+          };
+          if (disposed) {
+            cleanupListeners();
+            cleanupListeners = undefined;
+          }
         } catch (error) {
           console.error('文档加载失败:', error);
           setLoading(false);
@@ -264,6 +308,15 @@ const DocumentEditPage: React.FC = () => {
       }
     };
     loadDocument();
+    // 卸载或 id 变化时清理所有监听器
+    return () => {
+      disposed = true;
+      if (id?.startsWith('temp-')) {
+        tempUpdateDisposers.current.get(id)?.();
+      }
+      cleanupListeners?.();
+      cleanupListeners = undefined;
+    };
   }, [id, loadRecentTempDocument, initTempDocument, navigate]);
 
   // 保存文档
@@ -273,38 +326,36 @@ const DocumentEditPage: React.FC = () => {
       let currentId = id;
       let currentDoc = document;
 
+      // 新建文档：用 ensureTempId 获取稳定 tempId，不再写回 document.id
       if (!currentId) {
-        const tempId = document.id || `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        if (!document.id) {
-          currentDoc = { ...document, id: tempId };
-          setDocument(currentDoc);
-        }
-        currentId = tempId;
+        currentId = ensureTempId();
       }
 
-      const docToSave = { ...currentDoc, updatedAt: new Date().toISOString() };
+      const docToSave = { ...currentDoc, id: currentId, updatedAt: new Date().toISOString() };
       await localDB.saveDoc(docToSave);
 
       if (currentId && !currentId.startsWith('temp-')) {
         await syncDocument(currentId);
       } else {
-        // 新建文档：从Yjs获取最新内容，避免使用过时的React state
+        // 临时文档转正：从 Y.Doc 读取最新内容，避免使用过时的 React state
         const tempYDoc = getYDoc(currentId);
         const text = tempYDoc.getText('content');
         const yMap = tempYDoc.getMap('metadata');
         const latestContent = text.toString();
         const latestTitle = (yMap.get('title') as string) || currentDoc.title || 'Untitled Document';
-        
+
         const createData: CreateDocumentRequest = {
           title: latestTitle,
           content: latestContent,
         };
         const response = await documentApi.createDocument(createData);
-        
-        // 清理临时文档数据，内容已由后端基于createData生成初始快照
+
+        // 清理临时文档数据，内容已由后端基于 createData 生成初始快照
         await cleanupTempDocument(currentId);
-        
-        // 更新React state，确保内容正确显示
+        // 转正后重置 tempIdRef，避免后续误用已清理的 tempId
+        tempIdRef.current = null;
+
+        // document.id 在此唯一写回正式 id，触发 InkWeaverEditor 重挂载（符合预期）
         setDocument({
           ...currentDoc,
           id: response.id,
@@ -312,7 +363,7 @@ const DocumentEditPage: React.FC = () => {
           content: latestContent,
           updatedAt: new Date().toISOString()
         });
-        
+
         navigate(`/documents/${response.id}`);
       }
       showAlert('成功', '文档保存成功！', 'success');
@@ -339,55 +390,51 @@ const DocumentEditPage: React.FC = () => {
     }
   };
 
-  // 处理标题变化
+  // 标题变更：写入 Yjs metadata + 同步 React state
+  // 使用 transact + 'local-edit' origin，与 content 写入统一标记
+  // PG 元数据投影由 yMap.observe 回调统一完成
   const handleTitleChange = (title: string) => {
-    if (id) {
-      const yDoc = getYDoc(id);
+    const docId = id || ensureTempId();
+    const yDoc = getYDoc(docId);
+    yDoc.transact(() => {
       yDoc.getMap('metadata').set('title', title);
-      setDocument(prev => ({ ...prev, title, updatedAt: new Date().toISOString() }));
-    } else {
-      const tempId = document.id || `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const yDoc = getYDoc(tempId);
-      initTempDocument(tempId, yDoc);
-      yDoc.getMap('metadata').set('title', title);
-      setDocument(prev => {
-        const updated = { ...prev, id: tempId, title, updatedAt: new Date().toISOString() };
-        localDB.saveDoc(updated).catch(console.error);
-        return updated;
-      });
+    }, 'local-edit');
+
+    // 等值短路 + side effect 在 setDocument 外部执行（StrictMode 双调用安全）
+    const prev = documentRef.current;
+    if (prev.title === title) return;
+
+    const updated = { ...prev, title, updatedAt: new Date().toISOString() };
+    documentRef.current = updated;
+
+    // 临时文档落盘 localDB（正式文档由 yMap.observe 回调统一保存 + PG 投影）
+    if (!id) {
+      localDB.saveDoc({ ...updated, id: docId }).catch(console.error);
     }
+
+    setDocument(updated);
   };
 
-  // 处理内容变化
+  // 处理内容变化：使用 transact + 'local-edit' origin，与 Web 端对齐
   const handleContentChange = (event: { content: string }) => {
-    if (id) {
-      const yDoc = getYDoc(id);
+    const docId = id || ensureTempId();
+    const yDoc = getYDoc(docId);
+    yDoc.transact(() => {
       const text = yDoc.getText('content');
       text.delete(0, text.length);
       text.insert(0, event.content);
-    } else {
-      const tempId = document.id || `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const yDoc = getYDoc(tempId);
-      initTempDocument(tempId, yDoc);
-      const text = yDoc.getText('content');
-      text.delete(0, text.length);
-      text.insert(0, event.content);
-      setDocument(prev => {
-        const updated = { ...prev, id: tempId, content: event.content, updatedAt: new Date().toISOString() };
-        localDB.saveDoc(updated).catch(console.error);
-        return updated;
-      });
+    }, 'local-edit');
+
+    // 临时文档：等值短路 + side effect 在 setDocument 外部执行
+    if (!id) {
+      const prev = documentRef.current;
+      if (prev.content === event.content) return;
+      const updated = { ...prev, content: event.content, updatedAt: new Date().toISOString() };
+      documentRef.current = updated;
+      localDB.saveDoc({ ...updated, id: docId }).catch(console.error);
+      setDocument(updated);
     }
   };
-
-  // 实时保存到本地存储
-  useEffect(() => {
-    if (!id && (document.title || document.content)) {
-      const tempId = document.id || `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const tempDoc = { ...document, id: tempId, updatedAt: new Date().toISOString() };
-      localDB.saveDoc(tempDoc).catch(console.error);
-    }
-  }, [document.title, document.content, id]);
 
   const handleImageUpload = async (file: File): Promise<string> => {
     return URL.createObjectURL(file);
@@ -477,7 +524,7 @@ const DocumentEditPage: React.FC = () => {
       )}
 
       <InkWeaverEditor
-        key={document.id}
+        key={id || 'new'}
         content={document.content}
         onChange={handleContentChange}
         title={document.title}

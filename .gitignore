@@ -10,3 +10,6 @@ coverage
 deploy/INSTANCE.local.md
 .DS_Store
 uploads/
+services/embed-service/.venv/
+__pycache__/
+*.pyc

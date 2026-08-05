@@ -15,6 +15,8 @@ import {
   ForbiddenException,
   InternalServerErrorException,
   Logger,
+  Inject,
+  forwardRef,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { IsNull, LessThan, Not, Repository } from "typeorm";
@@ -24,6 +26,7 @@ import { CreateDocumentDto } from "./dto/create-document.dto";
 import { UpdateDocumentDto } from "./dto/update-document.dto";
 import { Document } from "./entity/document.entity";
 import { Folder } from "./entity/folder.entity";
+import { DocumentIndexService } from "../ai/document-index.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { StorageUsageService } from "../storage/storage-usage.service";
 import { DocSnapshot } from "../sync/entity/doc-snapshot.entity";
@@ -48,6 +51,8 @@ export class DocumentsService {
     private docSnapshotRepository: Repository<DocSnapshot>,
     private readonly storageUsageService: StorageUsageService,
     private readonly notificationsService: NotificationsService,
+    @Inject(forwardRef(() => DocumentIndexService))
+    private readonly documentIndexService: DocumentIndexService,
   ) {}
 
   /**
@@ -193,7 +198,7 @@ export class DocumentsService {
   }
 
   /**
-   * 将 Yjs 投影的标题/正文写回 PG（搜索、分享、列表用）。
+   * 将 Yjs 投影的标题/正文写回 PG（搜索、分享、列表用），并调度向量索引。
    */
   async projectSearchableContent(docId: string, title: string, content: string): Promise<void> {
     const document = await this.documentsRepository.findOne({
@@ -202,21 +207,27 @@ export class DocumentsService {
     if (!document) {
       return;
     }
-    if (document.title === title && document.content === content) {
-      return;
+
+    if (document.title !== title || document.content !== content) {
+      const previousBytes = this.storageUsageService.calculateDocumentBytes(
+        document.title,
+        document.content,
+      );
+      document.title = title;
+      document.content = content;
+      const saved = await this.documentsRepository.save(document);
+      const nextBytes = this.storageUsageService.calculateDocumentBytes(saved.title, saved.content);
+      if (nextBytes !== previousBytes) {
+        this.storageUsageService.scheduleRecalculate(saved.userId);
+      }
     }
 
-    const previousBytes = this.storageUsageService.calculateDocumentBytes(
-      document.title,
-      document.content,
-    );
-    document.title = title;
-    document.content = content;
-    const saved = await this.documentsRepository.save(document);
-    const nextBytes = this.storageUsageService.calculateDocumentBytes(saved.title, saved.content);
-    if (nextBytes !== previousBytes) {
-      this.storageUsageService.scheduleRecalculate(saved.userId);
-    }
+    await this.documentIndexService.scheduleReindex({
+      docId,
+      userId: document.userId,
+      title,
+      content,
+    });
   }
 
   async updateDocument(docId: string, userId: string, updateDocumentDto: UpdateDocumentDto): Promise<Document> {
@@ -438,6 +449,7 @@ export class DocumentsService {
 
   private async hardDeleteDocument(document: Document): Promise<void> {
     const docId = document.id;
+    await this.documentIndexService.deleteByDocId(docId);
     await this.syncUpdateRepository.delete({ docId });
     await this.docSnapshotRepository.delete({ docId });
     await this.documentsRepository.remove(document);

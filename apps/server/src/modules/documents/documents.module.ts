@@ -9,10 +9,11 @@
  * 输出：文档相关响应
  */
 
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { JwtModule } from "@nestjs/jwt";
 import { AuthModule } from "../auth/auth.module";
+import { AiModule } from "../ai/ai.module";
 
 import { DocumentsController } from "./documents.controller";
 import { DocumentsTrashController } from "./documents-trash.controller";
@@ -37,6 +38,7 @@ import { getJwtModuleOptions } from '../../config/jwt.config';
     NotificationsModule,
     AuthModule,
     JwtModule.register(getJwtModuleOptions()),
+    forwardRef(() => AiModule),
   ],
   controllers: [DocumentsTrashController, DocumentsController, DocumentsPublicController, FoldersController],
   providers: [DocumentsService, FoldersService, TrashCleanupService],

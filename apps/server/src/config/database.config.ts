@@ -32,7 +32,7 @@ export function getTypeOrmOptions(config: ConfigService): TypeOrmModuleOptions {
     password: config.get<string>('DB_PASSWORD', ''),
     database: config.get<string>('DB_DATABASE', 'syncbox_db'),
     autoLoadEntities: true,
-    synchronize: nodeEnv !== 'production',
+    synchronize: false,
     cache: false,
   };
 }

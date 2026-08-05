@@ -17,3 +17,4 @@ export * from './users/userApi';
 export * from './storage/storageApi';
 export * from './search/searchApi';
 export * from './notifications/notificationApi';
+export * from './ai/aiApi';

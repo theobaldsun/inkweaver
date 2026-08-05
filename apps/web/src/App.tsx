@@ -5,6 +5,7 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { SharedDocumentPage } from './pages/SharedDocumentPage';
 import NoteListPage from './pages/NoteListPage';
 import { SearchPage } from './pages/SearchPage';
+import { AiAskPage } from './pages/AiAskPage';
 import { ProfilePage } from './pages/ProfilePage';
 import TrashPage from './pages/TrashPage';
 import { AuthRoute } from './components/AuthRoute';
@@ -53,6 +54,7 @@ export const App: React.FC = () => {
                       <Routes>
                         <Route path="/notes" element={<NoteListPage />} />
                         <Route path="/search" element={<SearchPage />} />
+                        <Route path="/ai" element={<AiAskPage />} />
                         <Route path="/profile" element={<ProfilePage />} />
                         <Route path="/trash" element={<TrashPage />} />
                         <Route path="/documents/new" element={<DocumentEditRoute />} />

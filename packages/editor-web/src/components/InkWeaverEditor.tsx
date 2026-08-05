@@ -65,11 +65,13 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
   minHeight = 600,
   maxHeight,
   imageUploader,
-  title = '无标题文档',
+  title: titleProp = '无标题文档',
   onTitleChange,
   mobileMode = false,
   showTitleInput = true,
 }) => {
+  const [title, setTitle] = useState<string>(titleProp);
+  const prevTitlePropRef = useRef<string>(titleProp);
   const [outline, setOutline] = useState<OutlineItem[]>([]);
   const [activeHeading, setActiveHeading] = useState<string | null>(null);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
@@ -136,6 +138,19 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
       prevContentRef.current = content;
     }
   }, [content, editor]);
+
+  useEffect(() => {
+    if (titleProp !== prevTitlePropRef.current && titleProp !== title) {
+      setTitle(titleProp);
+      prevTitlePropRef.current = titleProp;
+    }
+  }, [titleProp, title]);
+
+  const handleTitleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.currentTarget.value;
+    setTitle(value);
+    onTitleChange?.(value);
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -500,7 +515,7 @@ export const InkWeaverEditor: React.FC<InkWeaverEditorProps> = ({
               aria-label="文档标题"
               className="editor-title-input"
               value={title}
-              onChange={(e) => onTitleChange?.(e.target.value)}
+              onChange={handleTitleInputChange}
               placeholder="无标题文档"
             />
           )}

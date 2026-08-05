@@ -18,6 +18,7 @@
     "@inkweaver/editor-web": "workspace:*",
     "@inkweaver/services": "workspace:*",
     "@inkweaver/shared": "workspace:*",
+    "@inkweaver/sync-client": "workspace:*",
     "@inkweaver/sync-engine": "workspace:*",
     "@inkweaver/ui": "workspace:*",
     "@tanstack/react-query": "^5.0.0",

@@ -55,10 +55,10 @@ import {
           StorageModule,
           NotificationsModule,
           MailModule,
+          AiModule,
         ]
       : []),
     SyncModule,
-    AiModule,
   ],
 })
 export class AppModule {}

@@ -19,6 +19,7 @@
     "@inkweaver/editor-web": "workspace:*",
     "@inkweaver/services": "workspace:*",
     "@inkweaver/shared": "workspace:*",
+    "@inkweaver/sync-client": "workspace:*",
     "@inkweaver/sync-engine": "workspace:*",
     "@inkweaver/ui": "workspace:*",
     "dexie": "^4.0.11",
