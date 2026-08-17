@@ -52,9 +52,10 @@ export class FoldersController {
   async deleteFolder(
     @Request() req: ExpressRequest, 
     @Param("folderId") folderId: string,
-    @Query("deleteAll") deleteAll: boolean = true
+    @Query("deleteAll") deleteAll?: string
   ) {
     const userId = (req.user as any)?.sub;
-    return this.foldersService.deleteFolder(folderId, userId, deleteAll);
+    const shouldDeleteAll = deleteAll === undefined ? true : deleteAll === "true";
+    return this.foldersService.deleteFolder(folderId, userId, shouldDeleteAll);
   }
 }

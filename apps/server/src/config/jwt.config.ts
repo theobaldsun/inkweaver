@@ -54,13 +54,24 @@ export function getAccessTokenTtl(): {
 
 /**
  * 构建 JwtModule 注册选项。
+ *
+ * 要求：`JWT_SECRET` 必须通过 ConfigService 或环境变量提供；
+ * 缺失时直接抛错，禁止使用硬编码回退值，防止弱密钥在非生产环境被绕过。
+ *
  * 输入：可选 ConfigService；输出：JwtModuleOptions（默认 access TTL 1h）
+ * 抛错：当 JWT_SECRET 未配置时
  */
 export function getJwtModuleOptions(config?: ConfigService): JwtModuleOptions {
   const secret =
     config?.get<string>('JWT_SECRET') ??
-    process.env.JWT_SECRET ??
-    'fallback-secret-key';
+    process.env.JWT_SECRET;
+
+  if (!secret) {
+    throw new Error(
+      'JWT_SECRET 未配置：请在 .env 或 ConfigService 中设置 JWT_SECRET，禁止使用硬编码回退值',
+    );
+  }
+
   const expiresIn =
     config?.get<string>('JWT_EXPIRES_IN') ??
     process.env.JWT_EXPIRES_IN ??

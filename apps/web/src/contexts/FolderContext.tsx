@@ -1,3 +1,14 @@
+/**
+ * 文件夹全局状态管理。
+ *
+ * 职责：
+ * - 维护文件夹树的本地状态（含文档数量统计）
+ * - 提供文件夹 CRUD 的本地操作方法
+ *
+ * 注意：
+ * - `updateFolder` / `removeFolder` 已支持递归操作嵌套子文件夹（修复 WEB-P2-10）
+ * - `refreshFolders` 从服务端全量拉取最新树
+ */
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { folderApi, documentService } from '../services/apiClient';
@@ -72,14 +83,51 @@ export const FolderProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setFolders(prev => [...prev, { ...folder, documents: [] }]);
   }, []);
 
-  const updateFolder = useCallback((folderId: string, updates: Partial<Folder>) => {
-    setFolders(prev => prev.map(folder => 
-      folder.id === folderId ? { ...folder, ...updates } : folder
-    ));
+  /**
+ * 更新指定文件夹的属性。
+ *
+ * 递归搜索：在嵌套 children 中查找目标 folderId，确保即使目标是
+ * 深层子文件夹也能被正确更新（原实现只处理根层级）。
+ *
+ * @param folderId 目标文件夹 ID
+ * @param updates 要更新的属性（如 { name: '新名称' }）
+ */
+const updateFolder = useCallback((folderId: string, updates: Partial<Folder>) => {
+    // 递归更新：在嵌套 children 中查找并更新目标文件夹
+    const updateRecursive = (list: FolderWithDocs[]): FolderWithDocs[] =>
+      list.map(folder => {
+        if (folder.id === folderId) {
+          return { ...folder, ...updates };
+        }
+        // 注意：只在有 children 时才递归，叶子节点直接返回
+        if (folder.children?.length) {
+          return { ...folder, children: updateRecursive(folder.children) };
+        }
+        return folder;
+      });
+    setFolders(prev => updateRecursive(prev));
   }, []);
 
-  const removeFolder = useCallback((folderId: string) => {
-    setFolders(prev => prev.filter(folder => folder.id !== folderId));
+  /**
+ * 删除指定文件夹（从本地状态中移除）。
+ *
+ * 递归搜索：先 filter 掉匹配的根层级文件夹，再 map 递归处理 children，
+ * 确保深层子文件夹也能被正确移除。
+ *
+ * @param folderId 要删除的文件夹 ID
+ */
+const removeFolder = useCallback((folderId: string) => {
+    // 递归删除：在嵌套 children 中查找并移除目标文件夹
+    const removeRecursive = (list: FolderWithDocs[]): FolderWithDocs[] =>
+      list
+        .filter(folder => folder.id !== folderId)
+        .map(folder => {
+          if (folder.children?.length) {
+            return { ...folder, children: removeRecursive(folder.children) };
+          }
+          return folder;
+        });
+    setFolders(prev => removeRecursive(prev));
   }, []);
 
   return (

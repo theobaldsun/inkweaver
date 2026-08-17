@@ -28,6 +28,7 @@ import { TrashCleanupService } from "./trash-cleanup.service";
 import { StorageModule } from "../storage/storage.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { DocumentsPublicController } from "./documents-public.controller";
+import { SyncModule } from "../sync/sync.module";
 
 import { getJwtModuleOptions } from '../../config/jwt.config';
 
@@ -39,6 +40,7 @@ import { getJwtModuleOptions } from '../../config/jwt.config';
     AuthModule,
     JwtModule.register(getJwtModuleOptions()),
     forwardRef(() => AiModule),
+    forwardRef(() => SyncModule),
   ],
   controllers: [DocumentsTrashController, DocumentsController, DocumentsPublicController, FoldersController],
   providers: [DocumentsService, FoldersService, TrashCleanupService],

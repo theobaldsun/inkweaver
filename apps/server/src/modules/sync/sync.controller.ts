@@ -20,7 +20,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan } from 'typeorm';
+import { Repository, DataSource, EntityManager, MoreThan } from 'typeorm';
 
 import { DocumentProjectionService } from './document-projection.service';
 import { DocSnapshot } from './entity/doc-snapshot.entity';
@@ -51,6 +51,7 @@ export class SyncController {
     private readonly documentProjectionService: DocumentProjectionService,
     private readonly snapshotService: SnapshotService,
     private readonly syncGateway: SyncGateway,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -74,38 +75,51 @@ export class SyncController {
     await this.documentsService.assertDocumentActive(docId, userId);
     assertValidSyncUpdates(updates);
 
-    const latestUpdate = await this.syncUpdateRepository.findOne({
-      where: { docId },
-      order: { updateId: 'DESC' },
-      select: ['updateId'],
-    });
+    const { savedUpdates, latestSavedUpdate }: {
+      savedUpdates: SyncUpdate[];
+      latestSavedUpdate: number;
+    } = await this.dataSource.transaction(
+      async (manager: EntityManager) => {
+        const latestUpdate = await manager.findOne(SyncUpdate, {
+          where: { docId },
+          order: { updateId: 'DESC' },
+          select: ['updateId'],
+          lock: { mode: 'pessimistic_write' },
+        });
 
-    const serverLatestUpdateId = latestUpdate?.updateId || 0;
+        const serverLatestUpdateId = latestUpdate?.updateId || 0;
 
-    if (baseUpdateId !== undefined && serverLatestUpdateId > baseUpdateId) {
-      throw new HttpException(
-        {
-          docId,
-          latestUpdateId: serverLatestUpdateId,
-          message: 'Client is behind server version',
-        },
-        HttpStatus.CONFLICT,
-      );
-    }
+        if (baseUpdateId !== undefined && serverLatestUpdateId > baseUpdateId) {
+          throw new HttpException(
+            {
+              docId,
+              latestUpdateId: serverLatestUpdateId,
+              message: 'Client is behind server version',
+            },
+            HttpStatus.CONFLICT,
+          );
+        }
 
-    const savedUpdates: SyncUpdate[] = [];
-    for (const update of updates) {
-      const syncUpdate = new SyncUpdate();
-      syncUpdate.docId = docId;
-      syncUpdate.update = update;
-      syncUpdate.timestamp = Date.now();
-      syncUpdate.clientId = clientId;
-      const saved = await this.syncUpdateRepository.save(syncUpdate);
-      savedUpdates.push(saved);
-    }
+        const updatesToSave: SyncUpdate[] = [];
+        for (const update of updates) {
+          const syncUpdate = manager.create(SyncUpdate, {
+            docId,
+            update,
+            timestamp: Date.now(),
+            clientId,
+          });
+          const saved = await manager.save(syncUpdate);
+          updatesToSave.push(saved);
+        }
 
-    const latestSavedUpdate =
-      savedUpdates[savedUpdates.length - 1]?.updateId || serverLatestUpdateId;
+        const latestId =
+          updatesToSave[updatesToSave.length - 1]?.updateId ||
+          serverLatestUpdateId;
+
+        return { savedUpdates: updatesToSave, latestSavedUpdate: latestId };
+      },
+    );
+
     const updateIds = savedUpdates.map((u) => u.updateId);
 
     this.syncGateway.broadcastDocUpdates(docId, updates, updateIds, clientId);

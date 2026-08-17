@@ -6,10 +6,27 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import * as Y from 'yjs';
+import type { DataSource, EntityManager } from 'typeorm';
 
 import { SyncController } from './sync.controller';
 
 const noopGateway = { broadcastDocUpdates() {} };
+
+function createMockDataSource(
+  managerOverrides: Record<string, unknown> = {},
+): DataSource {
+  const defaultManager: Record<string, unknown> = {
+    findOne: async () => null,
+    create: (_entity: unknown, plainObject: unknown) => ({ ...(plainObject as object) }),
+    save: async (entity: unknown) => entity,
+  };
+  return {
+    async transaction<T>(work: (manager: EntityManager) => Promise<T>): Promise<T> {
+      const manager = { ...defaultManager, ...managerOverrides } as unknown as EntityManager;
+      return work(manager);
+    },
+  } as unknown as DataSource;
+}
 
 test('返回完整快照时将游标推进到快照版本', async () => {
   const syncUpdateRepository = {
@@ -36,6 +53,7 @@ test('返回完整快照时将游标推进到快照版本', async () => {
     {} as never,
     {} as never,
     noopGateway as never,
+    {} as never,
   );
 
   const response = await controller.pull(
@@ -66,6 +84,16 @@ test('push 使用 JWT 用户校验文档归属后才持久化更新', async () =
       assertedOwner = userId;
     },
   };
+  let entitySaved: object | undefined;
+  const mockDataSource = createMockDataSource({
+    findOne: async () => null,
+    create: (_entity: unknown, plainObject: object) => plainObject,
+    save: async (entity: object) => {
+      entitySaved = entity;
+      saved = true;
+      return { ...entity, updateId: 1 };
+    },
+  });
   const controller = new SyncController(
     syncUpdateRepository as never,
     {} as never,
@@ -83,6 +111,7 @@ test('push 使用 JWT 用户校验文档归属后才持久化更新', async () =
         broadcastedClientId = clientId;
       },
     } as never,
+    mockDataSource as never,
   );
   const update = Buffer.from(Y.encodeStateAsUpdate(new Y.Doc())).toString('base64');
 
@@ -116,6 +145,7 @@ test('文档归属校验失败时 push 不写入更新', async () => {
     {} as never,
     {} as never,
     noopGateway as never,
+    {} as never,
   );
 
   await assert.rejects(

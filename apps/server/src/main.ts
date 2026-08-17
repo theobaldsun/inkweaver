@@ -27,25 +27,47 @@ import { createUploadsMiddleware } from "./modules/storage/uploads.middleware";
 
 async function bootstrap(): Promise<void> {
   const logger = createLogger({ scope: "server" });
+  const nodeEnv = process.env.NODE_ENV || 'development';
+  const corsOrigin = process.env.CORS_ORIGIN;
+
+  // CORS 配置：读取环境变量白名单，多个 origin 用逗号分隔
+  // 开发环境未配置时允许所有来源；生产环境必须显式配置，否则只允许 APP_PUBLIC_URL
+  let corsOptions: boolean | Record<string, unknown>;
+  if (corsOrigin) {
+    const origins = corsOrigin.split(',').map(o => o.trim());
+    corsOptions = { origin: origins, credentials: true };
+  } else if (nodeEnv === 'production') {
+    const fallback = process.env.APP_PUBLIC_URL || '';
+    logger.warn(`CORS_ORIGIN 未配置，生产环境仅允许: ${fallback || '(未配置，CORS 已禁用)'}`);
+    corsOptions = fallback
+      ? { origin: fallback, credentials: true }
+      : { origin: false };
+  } else {
+    corsOptions = true;
+  }
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    cors: true,
+    cors: corsOptions,
     logger: console,
   });
 
   const objectStorage = app.get(ObjectStorageService);
   app.use('/uploads', createUploadsMiddleware(objectStorage));
 
-  // 增加请求体大小限制
-  app.use(bodyParser.json({ limit: '100mb' }));
-  app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));
+  // 增加请求体大小限制（JSON/URL-encoded）
+  // 文件上传走 multipart/form-data，由 FileInterceptor 单独控制
+  app.use(bodyParser.json({ limit: '5mb' }));
+  app.use(bodyParser.urlencoded({ limit: '5mb', extended: true }));
 
   // 全局错误处理
+  const isDev = process.env.NODE_ENV !== 'production';
   app.useGlobalFilters({
     catch: (exception: any, host: any) => {
       const ctx = host.switchToHttp();
       const response = ctx.getResponse();
       const request = ctx.getRequest();
 
+      // 服务端始终记录完整堆栈，便于排查
       console.error('Global error:', exception);
 
       if (exception instanceof HttpException) {
@@ -59,15 +81,19 @@ async function bootstrap(): Promise<void> {
             message: exception.message,
           });
       } else {
-        response
-          .status(HttpStatus.INTERNAL_SERVER_ERROR)
-          .json({
-            statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
-            timestamp: new Date().toISOString(),
-            path: request.url,
-            message: exception.message || 'Internal server error',
-            stack: exception.stack,
-          });
+        const body: Record<string, unknown> = {
+          statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+          timestamp: new Date().toISOString(),
+          path: request.url,
+          message: isDev
+            ? exception.message || 'Internal server error'
+            : 'Internal server error',
+        };
+        // 仅在开发环境暴露堆栈供调试，生产环境一律不返回
+        if (isDev && exception.stack) {
+          body.stack = exception.stack;
+        }
+        response.status(HttpStatus.INTERNAL_SERVER_ERROR).json(body);
       }
     },
   });

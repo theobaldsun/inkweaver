@@ -25,7 +25,7 @@ import {
   OnGatewayConnection,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Repository } from 'typeorm';
+import { Repository, DataSource, EntityManager } from 'typeorm';
 
 import { DocumentProjectionService } from './document-projection.service';
 import { SyncUpdate } from './entity/sync-update.entity';
@@ -47,11 +47,19 @@ interface UpdateMessage {
 
 type AuthedSocket = Socket & { data: { userId?: string } };
 
+const corsOriginEnv = process.env.CORS_ORIGIN;
+const corsOrigins = corsOriginEnv
+  ? corsOriginEnv.split(',').map(o => o.trim())
+  : process.env.NODE_ENV === 'production'
+    ? (process.env.APP_PUBLIC_URL ? [process.env.APP_PUBLIC_URL] : [])
+    : true;
+
 @WebSocketGateway({
   namespace: '/sync',
   cors: {
-    origin: process.env.CORS_ORIGIN?.split(',') ?? true,
+    origin: corsOrigins,
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 })
 export class SyncGateway implements OnGatewayConnection {
@@ -68,6 +76,7 @@ export class SyncGateway implements OnGatewayConnection {
     private readonly documentProjectionService: DocumentProjectionService,
     private readonly snapshotService: SnapshotService,
     private readonly authService: AuthService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -137,6 +146,46 @@ export class SyncGateway implements OnGatewayConnection {
     });
   }
 
+  /**
+   * 将指定文档房间内的所有 socket 踢出。
+   *
+   * 用途：当文档被删除或权限被收回时，主动清除房间成员，
+   * 防止已无权限的 socket 继续接收广播。
+   *
+   * 底层机制：
+   * - Socket.IO 内部维护两个 Map：
+   *   1. `adapter.rooms`: Map<roomName, Set<socketId>> — 房间 → socket ID 集合
+   *   2. `sockets.sockets`: Map<socketId, Socket> — socket ID → Socket 对象
+   * - 先从 rooms 获取 socket ID 列表，再从 sockets 获取活跃 Socket 对象
+   * - Socket.IO 会自动处理已断开的 socket（rooms 和 sockets 会在 disconnect 时同步清理）
+   *
+   * 高级用法（Socket.IO 原生 API）：
+   *   // 一行代码实现，内部等价于本方法的逻辑
+   *   const sockets = await this.server.in(roomName).fetchSockets();
+   *   for (const socket of sockets) { socket.leave(roomName); }
+   *
+   * @param docId 文档 ID
+   */
+  evictFromDocRoom(docId: string): void {
+    if (!this.server) return;
+    const roomName = `doc-${docId}`;
+    // 从 adapter.rooms Map 获取房间内所有 socket ID（Set<string>）
+    const room = this.server.sockets.adapter.rooms.get(roomName);
+    if (!room || room.size === 0) return;
+
+    // Set → Array，便于遍历
+    const socketIds = Array.from(room);
+    for (const socketId of socketIds) {
+      // 从 sockets Map 获取活跃 Socket 对象
+      // 防御性检查：防止访问已断开的 socket（理论上不会发生）
+      const socket = this.server.sockets.sockets.get(socketId);
+      if (socket) {
+        socket.leave(roomName);
+      }
+    }
+    this.logger.log(`Evicted ${socketIds.length} sockets from room ${roomName}`);
+  }
+
   @SubscribeMessage('join-doc')
   async handleJoinDoc(
     @ConnectedSocket() client: AuthedSocket,
@@ -198,48 +247,62 @@ export class SyncGateway implements OnGatewayConnection {
       await this.documentsService.assertDocumentActive(docId, userId);
       assertValidSyncUpdates(updates);
 
-      if (baseUpdateId !== undefined) {
-        const latestUpdate = await this.syncUpdateRepository.findOne({
-          where: { docId },
-          order: { updateId: 'DESC' },
-          select: ['updateId'],
-        });
-
-        if (latestUpdate && latestUpdate.updateId > baseUpdateId) {
-          client.emit('conflict', {
-            docId,
-            serverUpdateId: latestUpdate.updateId,
-            message: 'Client is behind server version',
+      const result = await this.dataSource.transaction(async (manager: EntityManager) => {
+        if (baseUpdateId !== undefined) {
+          const latestUpdate = await manager.findOne(SyncUpdate, {
+            where: { docId },
+            order: { updateId: 'DESC' },
+            select: ['updateId'],
+            lock: { mode: 'pessimistic_write' },
           });
-          return { success: false, reason: 'conflict' };
+
+          if (latestUpdate && latestUpdate.updateId > baseUpdateId) {
+            return {
+              conflict: true,
+              serverUpdateId: latestUpdate.updateId,
+            };
+          }
         }
-      }
 
-      const savedUpdates = [];
-      for (const updateData of updates) {
-        const syncUpdate = this.syncUpdateRepository.create({
+        const savedUpdates = [];
+        for (const updateData of updates) {
+          const syncUpdate = manager.create(SyncUpdate, {
+            docId,
+            update: updateData,
+            timestamp: Date.now(),
+            clientId,
+          });
+          const saved = await manager.save(syncUpdate);
+          savedUpdates.push(saved);
+        }
+
+        return {
+          conflict: false,
+          updateIds: savedUpdates.map((u) => u.updateId),
+        };
+      });
+
+      if (result.conflict) {
+        client.emit('conflict', {
           docId,
-          update: updateData,
-          timestamp: Date.now(),
-          clientId,
+          serverUpdateId: result.serverUpdateId,
+          message: 'Client is behind server version',
         });
-        const saved = await this.syncUpdateRepository.save(syncUpdate);
-        savedUpdates.push(saved);
+        return { success: false, reason: 'conflict' };
       }
 
-      const updateIds = savedUpdates.map((u) => u.updateId);
-      // client.to 已排除本 socket；附带 clientId 供多连接场景自忽略
+      // 广播和副作用在事务外执行，避免长事务
       client.to(`doc-${docId}`).emit('update', {
         type: 'update',
         docId,
-        data: { updates, updateIds, clientId },
+        data: { updates, updateIds: result.updateIds, clientId },
       });
 
       this.storageUsageService.scheduleRecalculateByDocId(docId);
       this.documentProjectionService.scheduleProjection(docId);
       this.snapshotService.scheduleSnapshot(docId);
 
-      return { success: true, updateIds };
+      return { success: true, updateIds: result.updateIds };
     } catch (error) {
       this.logger.error(`Failed to process update for doc ${docId}:`, error);
       const status =

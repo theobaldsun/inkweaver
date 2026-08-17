@@ -21,7 +21,9 @@ test('parseJwtExpiresInToSeconds 解析常见时长', () => {
 });
 
 test('默认 access TTL 为 1h', () => {
-  const prev = process.env.JWT_EXPIRES_IN;
+  const prevExpires = process.env.JWT_EXPIRES_IN;
+  const prevSecret = process.env.JWT_SECRET;
+  process.env.JWT_SECRET ??= 'test-secret-for-jwt';
   delete process.env.JWT_EXPIRES_IN;
   try {
     const ttl = getAccessTokenTtl();
@@ -31,10 +33,32 @@ test('默认 access TTL 为 1h', () => {
     const options = getJwtModuleOptions();
     assert.equal(options.signOptions?.expiresIn, '1h');
   } finally {
-    if (prev === undefined) {
+    if (prevExpires === undefined) {
       delete process.env.JWT_EXPIRES_IN;
     } else {
-      process.env.JWT_EXPIRES_IN = prev;
+      process.env.JWT_EXPIRES_IN = prevExpires;
+    }
+    if (prevSecret === undefined) {
+      delete process.env.JWT_SECRET;
+    } else {
+      process.env.JWT_SECRET = prevSecret;
+    }
+  }
+});
+
+test('JWT_SECRET 未配置时抛错', () => {
+  const prevSecret = process.env.JWT_SECRET;
+  delete process.env.JWT_SECRET;
+  try {
+    assert.throws(
+      () => getJwtModuleOptions(),
+      /JWT_SECRET 未配置/,
+    );
+  } finally {
+    if (prevSecret === undefined) {
+      delete process.env.JWT_SECRET;
+    } else {
+      process.env.JWT_SECRET = prevSecret;
     }
   }
 });

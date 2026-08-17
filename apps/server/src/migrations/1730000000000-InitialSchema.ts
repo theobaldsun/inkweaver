@@ -59,7 +59,7 @@ export class InitialSchema1730000000000 implements MigrationInterface {
       CREATE TABLE IF NOT EXISTS "folders" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "name" character varying NOT NULL,
-        "parentId" character varying,
+        "parentId" uuid,
         "description" character varying,
         "userId" uuid NOT NULL,
         "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
@@ -76,7 +76,7 @@ export class InitialSchema1730000000000 implements MigrationInterface {
         "isPublic" boolean NOT NULL DEFAULT false,
         "shareLink" character varying,
         "tags" jsonb,
-        "folderId" character varying,
+        "folderId" uuid,
         "userId" uuid NOT NULL,
         "deletedAt" TIMESTAMP WITH TIME ZONE,
         "deletedFromFolderId" uuid,

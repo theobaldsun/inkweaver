@@ -41,6 +41,7 @@ export const {
   onSyncConflict,
   onConnectionChange,
   isWebSocketConnected,
+  disconnectSocket,
   syncEngine,
   localDB,
   SYNC_REPLAY_ORIGIN,

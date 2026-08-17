@@ -9,34 +9,12 @@ import { randomUUID } from 'crypto';
 
 import { BadRequestException, Injectable } from '@nestjs/common';
 
+import { matchesImageSignature } from '../../common/image-signature';
 import { ObjectStorageService } from './object-storage.service';
 import { StorageUsageService } from './storage-usage.service';
 
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const MAX_BYTES = 5 * 1024 * 1024;
-
-function matchesImageSignature(mimetype: string, buffer: Buffer): boolean {
-  if (mimetype === 'image/jpeg') {
-    return buffer.length >= 3 && buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]));
-  }
-  if (mimetype === 'image/png') {
-    const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-    return buffer.length >= pngSignature.length && buffer.subarray(0, pngSignature.length).equals(pngSignature);
-  }
-  if (mimetype === 'image/gif') {
-    if (buffer.length < 6) return false;
-    const signature = buffer.subarray(0, 6).toString('ascii');
-    return signature === 'GIF87a' || signature === 'GIF89a';
-  }
-  if (mimetype === 'image/webp') {
-    return (
-      buffer.length >= 12 &&
-      buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
-      buffer.subarray(8, 12).toString('ascii') === 'WEBP'
-    );
-  }
-  return false;
-}
 
 @Injectable()
 export class StorageAssetService {

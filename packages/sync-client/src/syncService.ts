@@ -271,6 +271,7 @@ export function createSyncService(deps: SyncServiceDeps): SyncService {
         s.auth = { token: tokens?.access_token ?? '' };
 
         if (s.connected) {
+          // 已连接时也刷新 auth（token 可能在期间被更新）
           resolve();
           return;
         }
@@ -413,6 +414,21 @@ export function createSyncService(deps: SyncServiceDeps): SyncService {
   /** 当前 socket 是否连接 */
   const isWebSocketConnected = (): boolean => socket?.connected ?? false;
 
+  /**
+   * 断开 socket 连接并清理所有房间状态。
+   *
+   * 调用时机：用户登出时调用，防止旧 token 持有连接。
+   * 登出后若用户重新登录，connectSocket 会以新 token 建立全新连接。
+   */
+  const disconnectSocket = (): void => {
+    if (socket) {
+      socket.disconnect();
+      socket = null;
+    }
+    docRooms.clear();
+    notifyConnectionChange(false);
+  };
+
   return {
     subscribeDocRoom,
     syncDocument,
@@ -421,6 +437,7 @@ export function createSyncService(deps: SyncServiceDeps): SyncService {
     onSyncConflict,
     onConnectionChange,
     isWebSocketConnected,
+    disconnectSocket,
     get syncEngine() {
       return syncEngine;
     },

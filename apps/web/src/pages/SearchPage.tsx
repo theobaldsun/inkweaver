@@ -1,5 +1,9 @@
 /**
  * 全文搜索页：支持 URL 查询参数 `?q=` 深链。
+ *
+ * 已修复缺陷：
+ * - WEB-P2-05: highlightSearchTerm 正则注入 + lastIndex 缺陷
+ * - WEB-P2-06: 搜索请求竞态，结果错序
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -23,13 +27,27 @@ const stripHtmlTags = (html: string): string => {
   return cleaned.length > 100 ? cleaned.substring(0, 100) + '...' : cleaned;
 };
 
+/** 转义正则特殊字符，防止用户输入被当作正则指令执行 */
+const escapeRegExp = (str: string): string =>
+  str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * 高亮搜索关键词。
+ *
+ * 修复点（WEB-P2-05）：
+ * 1. 使用 escapeRegExp 转义 term，防止用户输入的正则特殊字符导致构造非法正则
+ *    例：用户搜索 "a+b" 时，转义后变成 "a\+b"，匹配字面量 "a+b" 而非 "a" 后面一个或多个 "b"
+ * 2. 不使用带 g 标志的正则做 test（会受 lastIndex 影响产生状态化行为）
+ *    改用 String.prototype.includes 做无状态判断，彻底避免 lastIndex 问题
+ */
 const highlightSearchTerm = (text: string, term: string): React.ReactNode => {
   if (!term) return text;
-  const regex = new RegExp(`(${term})`, 'gi');
+  const escaped = escapeRegExp(term);
+  const regex = new RegExp(`(${escaped})`, 'gi');
   const parts = text.split(regex);
 
   return parts.map((part, index) =>
-    regex.test(part) ? (
+    part.toLowerCase().includes(term.toLowerCase()) ? (
       <span key={index} className="highlight">{part}</span>
     ) : (
       <span key={index}>{part}</span>
@@ -46,6 +64,8 @@ export const SearchPage: React.FC = () => {
   const [searchError, setSearchError] = useState('');
   const [history, setHistory] = useState<SearchHistoryItem[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  /** 请求序号：确保只有最新搜索请求的结果被应用，防止竞态 */
+  const searchRequestIdRef = React.useRef(0);
 
   useEffect(() => {
     loadSearchHistory();
@@ -85,28 +105,42 @@ export const SearchPage: React.FC = () => {
   const handleSearch = useCallback(async (searchQuery: string) => {
     if (!searchQuery.trim()) return;
 
+    // 修复 WEB-P2-06：请求序号机制。每次搜索递增序号，仅允许最新请求更新状态
+    // 场景：用户输入 "hel"→"hello"，两个请求并发，旧请求可能后发先至
+    // 通过序号检查，确保只有最新请求（序号最大）的结果被采纳
+    const requestId = ++searchRequestIdRef.current;
     setSearching(true);
     setSearchError('');
     try {
       const response = await documentService.searchDocuments(searchQuery, 1, 20);
-      setResults(response.documents);
+      // 仅当此请求仍是最新请求时才更新结果（防止快速连续搜索导致错序）
+      if (requestId === searchRequestIdRef.current) {
+        setResults(response.documents);
+      }
 
       await searchApi.addSearchHistory(searchQuery).catch(() => undefined);
 
-      setHistory((prev) => {
-        if (prev.some((item) => item.keyword === searchQuery)) return prev;
-        return [{
-          keyword: searchQuery,
-          count: 1,
-          updatedAt: new Date().toISOString(),
-        }, ...prev].slice(0, 10);
-      });
+      if (requestId === searchRequestIdRef.current) {
+        setHistory((prev) => {
+          if (prev.some((item) => item.keyword === searchQuery)) return prev;
+          return [{
+            keyword: searchQuery,
+            count: 1,
+            updatedAt: new Date().toISOString(),
+          }, ...prev].slice(0, 10);
+        });
+      }
     } catch (error) {
       console.error('Search failed:', error);
-      setResults([]);
-      setSearchError(error instanceof Error ? error.message : '搜索失败，请稍后重试');
+      if (requestId === searchRequestIdRef.current) {
+        setResults([]);
+        setSearchError(error instanceof Error ? error.message : '搜索失败，请稍后重试');
+      }
     } finally {
-      setSearching(false);
+      // 只有最新请求才能关闭 loading 状态，防止旧请求的 finally 把新请求的 loading 提前关掉
+      if (requestId === searchRequestIdRef.current) {
+        setSearching(false);
+      }
     }
   }, []);
 

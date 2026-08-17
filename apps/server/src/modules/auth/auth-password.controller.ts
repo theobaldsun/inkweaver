@@ -2,7 +2,8 @@
  * 公开鉴权相关接口：忘记密码、重置密码。
  */
 
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
+import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { createHash, randomBytes } from 'crypto';
@@ -27,6 +28,7 @@ class ResetPasswordDto {
 }
 
 @Controller('/api/auth')
+@UseGuards(ThrottlerGuard)
 export class AuthPasswordController {
   constructor(
     private readonly usersService: UsersService,
@@ -37,6 +39,7 @@ export class AuthPasswordController {
 
   @Post('/forgot-password')
   @HttpCode(200)
+  @Throttle({ default: { ttl: 300000, limit: 3 } })
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
     const user = await this.usersService.findByEmail(dto.email);
     if (user) {
@@ -65,6 +68,7 @@ export class AuthPasswordController {
 
   @Post('/reset-password')
   @HttpCode(200)
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   async resetPassword(@Body() dto: ResetPasswordDto) {
     const tokenHash = createHash('sha256').update(dto.token).digest('hex');
     const row = await this.resetRepo.findOne({

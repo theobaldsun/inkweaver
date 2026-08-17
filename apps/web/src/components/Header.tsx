@@ -3,6 +3,7 @@ import { Search, Plus, User, X, LogOut, Sparkles } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/apiClient';
+import { disconnectSocket } from '../services/syncService';
 import CustomModal from './CustomModal';
 
 const Header: React.FC = () => {
@@ -32,6 +33,7 @@ const Header: React.FC = () => {
   const confirmLogout = async () => {
     try {
       await authService.logout();
+      disconnectSocket();
       navigate('/login');
     } catch (error) {
       console.error('Logout failed:', error);

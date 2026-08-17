@@ -121,6 +121,8 @@ const DocumentEditPage: React.FC = () => {
   const yDocRef = useRef<Y.Doc | null>(null);
   const contentDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const metaProjectionRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 待执行的元数据投影数据（id 切换时用于 flush，而非丢弃） */
+  const pendingMetaProjectionRef = useRef<{ docId: string; title: string; content: string } | null>(null);
   /**
    * 同步指向最新 document state，供 yMap.observe / handleContentChange 等闭包回调读取
    * 避免 setDocument(prev => {...}) updater 内部执行 side effect（StrictMode 双调用安全）
@@ -143,11 +145,17 @@ const DocumentEditPage: React.FC = () => {
    */
   const scheduleMetadataProjection = (docId: string, title: string, content: string) => {
     if (!docId || docId.startsWith('temp-')) return;
+    // 存储最新待投影数据，供 id 切换时 flush（而非丢弃）
+    pendingMetaProjectionRef.current = { docId, title, content };
     if (metaProjectionRef.current) clearTimeout(metaProjectionRef.current);
     metaProjectionRef.current = setTimeout(() => {
-      documentService.updateDocument(docId, { title, content }).catch((err) => {
-        console.error('元数据投影失败:', err);
-      });
+      const pending = pendingMetaProjectionRef.current;
+      if (pending && pending.docId === docId) {
+        documentService.updateDocument(docId, { title, content }).catch((err) => {
+          console.error('元数据投影失败:', err);
+        });
+        pendingMetaProjectionRef.current = null;
+      }
     }, 1500);
   };
 
@@ -435,6 +443,21 @@ const DocumentEditPage: React.FC = () => {
         clearTimeout(contentDebounceRef.current);
         contentDebounceRef.current = null;
       }
+      // id 变化时 flush 待执行的元数据投影（不丢弃前一文档的 title/content 更新）
+      if (metaProjectionRef.current) {
+        clearTimeout(metaProjectionRef.current);
+        metaProjectionRef.current = null;
+        const pending = pendingMetaProjectionRef.current;
+        if (pending) {
+          documentService.updateDocument(pending.docId, {
+            title: pending.title,
+            content: pending.content,
+          }).catch((err) => {
+            console.error('切换文档时 flush 元数据投影失败:', err);
+          });
+          pendingMetaProjectionRef.current = null;
+        }
+      }
       if (id?.startsWith('temp-')) {
         tempUpdateDisposers.current.get(id)?.();
       }
@@ -472,6 +495,7 @@ const DocumentEditPage: React.FC = () => {
         clearTimeout(metaProjectionRef.current);
         metaProjectionRef.current = null;
       }
+      pendingMetaProjectionRef.current = null;
       pushPendingThrottleRef.current?.cancel();
       pushPendingThrottleRef.current = null;
     };

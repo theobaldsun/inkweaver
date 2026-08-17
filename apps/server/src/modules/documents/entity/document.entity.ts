@@ -32,7 +32,8 @@ export class Document {
   @Column({ type: 'jsonb', nullable: true })
   tags!: string[];
 
-  @Column({ type: 'varchar', nullable: true })
+  /** 文档所属文件夹 ID（uuid 类型，与 folders.id 保持一致以便外键关联） */
+  @Column({ type: 'uuid', nullable: true })
   folderId!: string | null;
 
   /**

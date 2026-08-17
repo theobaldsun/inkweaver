@@ -13,7 +13,8 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import * as bcrypt from "bcrypt";
-import { MoreThan, Repository } from "typeorm";
+import { createHash } from "crypto";
+import { LessThan, MoreThan, IsNull, Repository } from "typeorm";
 
 import { Session, SessionStatus } from "./entity/session.entity";
 import { User } from "../users/entity/user.entity";
@@ -37,15 +38,20 @@ export class SessionService {
 
   /**
    * 创建新会话
+   *
+   * 同时写入 bcrypt 哈希（用于最终安全校验）和 SHA-256 哈希（用于索引定位），
+   * 避免 validateRefreshToken 对全部活跃会话逐条 bcrypt 扫描。
    */
   async createSession(data: CreateSessionData): Promise<Session> {
     const refreshTokenHash = await bcrypt.hash(data.refreshToken, 10);
+    const refreshTokenLookup = createHash('sha256').update(data.refreshToken).digest('hex');
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30天后
 
     const session = this.sessionRepository.create({
       user: data.user,
       userId: data.user.id,
       refreshTokenHash,
+      refreshTokenLookup,
       deviceType: data.deviceType,
       deviceName: data.deviceName,
       os: data.os,
@@ -60,23 +66,53 @@ export class SessionService {
 
   /**
    * 验证刷新令牌
+   *
+   * 策略：先用 SHA-256 哈希在索引列上定位候选会话（O(1)），
+   * 再对命中的会话做单次 bcrypt.compare 校验。
+   * 兼容历史数据：refreshTokenLookup 为空时回退为全量扫描（一次性迁移后不再触发）。
    */
   async validateRefreshToken(refreshToken: string, userId: string): Promise<Session> {
-    const sessions = await this.sessionRepository.find({
+    const lookup = createHash('sha256').update(refreshToken).digest('hex');
+
+    // 优先走索引定位：命中后只做 1 次 bcrypt
+    const candidates = await this.sessionRepository.find({
       where: {
         userId,
         status: SessionStatus.ACTIVE,
         expiresAt: MoreThan(new Date()),
+        refreshTokenLookup: lookup,
       },
     });
 
-    for (const session of sessions) {
+    for (const session of candidates) {
       const isValid = await bcrypt.compare(refreshToken, session.refreshTokenHash);
       if (isValid) {
-        // 更新最后活动时间
         session.lastActivityAt = new Date();
         await this.sessionRepository.save(session);
         return session;
+      }
+    }
+
+    // 回退：历史数据 refreshTokenLookup 为空，逐条扫描 bcrypt
+    if (candidates.length === 0) {
+      const legacySessions = await this.sessionRepository.find({
+        where: {
+          userId,
+          status: SessionStatus.ACTIVE,
+          expiresAt: MoreThan(new Date()),
+          refreshTokenLookup: IsNull(),
+        },
+      });
+
+      for (const session of legacySessions) {
+        const isValid = await bcrypt.compare(refreshToken, session.refreshTokenHash);
+        if (isValid) {
+          // 命中后回填 lookup，避免下次再次扫描
+          session.refreshTokenLookup = lookup;
+          session.lastActivityAt = new Date();
+          await this.sessionRepository.save(session);
+          return session;
+        }
       }
     }
 
@@ -155,7 +191,7 @@ export class SessionService {
     await this.sessionRepository.update(
       { 
         status: SessionStatus.ACTIVE, 
-        expiresAt: new Date() 
+        expiresAt: LessThan(new Date())
       },
       { status: SessionStatus.EXPIRED }
     );

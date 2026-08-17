@@ -2,7 +2,7 @@
  * 个人中心页状态与 API 操作。
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { User, UserSettings, UserSessionInfo } from '@inkweaver/shared';
 import { DEFAULT_USER_SETTINGS, MIN_PASSWORD_LENGTH, isPasswordLengthValid } from '@inkweaver/shared';
@@ -33,6 +33,8 @@ export function useProfilePage() {
     confirmPassword: '',
   });
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_USER_SETTINGS);
+  /** 保存前的 settings 快照，用于回滚（防止闭包值过期） */
+  const settingsSnapshotRef = useRef<UserSettings>(DEFAULT_USER_SETTINGS);
   const [documentCount, setDocumentCount] = useState(0);
   const [usedBytes, setUsedBytes] = useState(0);
   const [searchCount, setSearchCount] = useState(0);
@@ -163,16 +165,20 @@ export function useProfilePage() {
   };
 
   const saveSettings = async (partial: Partial<UserSettings>) => {
+    // 快照当前 settings，用于失败时回滚（防止因闭包值过期导致回滚数据错误）
+    const snapshot = settingsSnapshotRef.current;
     const next = { ...settings, ...partial };
     setSettings(next);
     setSaving(true);
     setError('');
     try {
       const saved = await userService.updatePreferences(partial);
+      settingsSnapshotRef.current = saved;
       setSettings(saved);
       showSuccess('设置已保存');
     } catch (err) {
-      setSettings(settings);
+      // 使用保存前的快照回滚，而非闭包捕获的 settings（可能已过期）
+      setSettings(snapshot);
       handleAuthError(err);
     } finally {
       setSaving(false);

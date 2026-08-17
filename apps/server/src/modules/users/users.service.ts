@@ -1,7 +1,8 @@
 import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { hashDigestForStorage, verifyPasswordDigest, digestPlainPassword } from "../../common/password-crypto";
-import { Repository } from "typeorm";
+import { matchesImageSignature } from "../../common/image-signature";
+import { QueryFailedError, Repository } from "typeorm";
 
 import { mergeUserSettings, type UserSettings } from "@inkweaver/shared";
 import { User } from "./entity/user.entity";
@@ -14,6 +15,7 @@ import { UpdateUserSettingsDto } from "./dto/update-user-settings.dto";
 
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 const ALLOWED_AVATAR_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const PG_UNIQUE_VIOLATION_CODE = '23505';
 
 @Injectable()
 export class UsersService {
@@ -40,6 +42,13 @@ export class UsersService {
 
   /**
    * 注册用户并签发令牌（与 login 返回结构一致）。
+   *
+   * 流程：
+   * 1. 前置检查：查询邮箱是否已存在（快速路径）
+   * 2. 创建用户：INSERT 到数据库
+   * 3. TOCTOU 防御：捕获唯一约束冲突（23505），转为 ConflictException
+   *    —— 两个并发注册同一邮箱的请求，第一个成功，第二个因唯一约束被拒
+   * 4. 登录并返回令牌
    */
   async register(
     email: string,
@@ -51,7 +60,17 @@ export class UsersService {
     if (existingUser) {
       throw new ConflictException('邮箱已存在');
     }
-    await this.create(email, passwordHash, name);
+
+    try {
+      await this.create(email, passwordHash, name);
+    } catch (err) {
+      // TOCTOU：并发注册时，第二个 INSERT 会触发 PostgreSQL 唯一约束冲突（23505）
+      if (err instanceof QueryFailedError && err.driverError?.code === PG_UNIQUE_VIOLATION_CODE) {
+        throw new ConflictException('邮箱已存在');
+      }
+      throw err;
+    }
+
     return this.login(email, passwordHash, sessionMeta);
   }
 
@@ -188,6 +207,11 @@ export class UsersService {
 
   /**
    * 保存用户头像文件并更新 avatarUrl。
+   *
+   * 校验流程：
+   * 1. MIME 类型白名单（仅 JPEG/PNG/WebP）
+   * 2. 文件大小限制（2MB）
+   * 3. 魔数校验（防止恶意文件伪装成图片）
    */
   async updateAvatar(
     userId: string,
@@ -198,6 +222,9 @@ export class UsersService {
     }
     if (file.size > AVATAR_MAX_BYTES) {
       throw new BadRequestException('头像不能超过 2MB');
+    }
+    if (!matchesImageSignature(file.mimetype, file.buffer)) {
+      throw new BadRequestException('文件内容与声明的图片类型不匹配');
     }
 
     const ext = file.mimetype === 'image/png' ? 'png' : file.mimetype === 'image/webp' ? 'webp' : 'jpg';

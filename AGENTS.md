@@ -37,6 +37,7 @@
 | [UI规范.md](docs/UI规范.md) | 设计令牌、组件与跨端 UI 约束 |
 | [运维.md](docs/运维.md) | 环境、部署、迁移、监控与排障 |
 | [Issue.md](docs/Issue.md) | 已验证的问题根因与修复记录 |
+| [技术笔记.md](docs/技术笔记.md) | 结合项目代码理解技术原理的深度笔记 |
 
 ## 常用命令
 
@@ -61,5 +62,84 @@ pnpm lint
 
 - `AGENTS.md`：项目工程规范和 Agent 指令入口。
 - 排障结论经验证后应记录到 `docs/Issue.md`，格式包含日期、模块、现象、根因、修复和验证标准，避免重复排障。
+- **技术原理笔记**：当在修复 bug 或重构过程中，通过阅读项目代码深入理解了某项技术原理（如框架生命周期、依赖注入机制、并发模型等），应将分析过程、时序图、关键概念和教训记录到 `docs/技术笔记.md`。每条笔记需关联具体项目文件和行号，便于后续查阅。
+
+## 代码注释规范
+
+### 必须添加注释的场景
+
+1. **文件级注释**（每个 Service/Controller/Entity 文件顶部）
+   - 说明文件用途和核心职责
+   - 列出数据来源或依赖的表/模块
+   - 描述关键策略（如缓存策略、限流策略等）
+
+2. **接口/类型字段注释**（Interface 每个字段）
+   - 用 `/** */` 标注字段含义和单位（字节、百分比等）
+   - 标注可选字段的语义（如 `recalculated`、`stale`）
+
+3. **类属性注释**（私有属性）
+   - 说明 Map/Set 的用途（如防抖定时器、告警用户集合）
+
+4. **方法级 JSDoc**（所有 public 方法）
+   - 描述方法功能和业务背景
+   - 列出关键步骤或策略流程（如 4 步缓存判断）
+   - 注明参数含义和特殊约束
+   - 对复杂计算说明性能考量（如"使用原生 SQL 避免 Node.js Buffer 性能问题"）
+
+5. **行内注释**（关键逻辑分支）
+   - 缓存判断、降级逻辑、配额阈值等关键分支处添加中文注释
+   - 说明"为什么这样做"而非"做了什么"
+
+### 注释示例
+
+```typescript
+/**
+ * 存储用量统计结果（面向客户端的响应结构）。
+ */
+export interface ServerStorageUsage {
+  /** 已使用字节数（文档 + 同步数据） */
+  usedBytes: number;
+  /** 使用率百分比（0-100，保留两位小数） */
+  usagePercent: number;
+  /** 缓存是否已过期（重算失败降级时为 true） */
+  stale?: boolean;
+}
+
+@Injectable()
+export class StorageUsageService {
+  /** 防抖定时器：userId → setTimeout 句柄。用于合并同一用户的多次重算请求 */
+  private readonly pendingRecalc = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /**
+   * 获取用户存储用量。
+   *
+   * 策略：
+   * 1. 缓存有效 → 直接返回缓存（recalculated=false）
+   * 2. 缓存过期或 force=true → 触发全量重算
+   * 3. 重算失败 → 降级返回缓存（stale=true）
+   * 4. 无缓存且重算失败 → 抛出异常
+   *
+   * @param userId 用户 ID
+   * @param options.recalculate 是否强制重算（忽略缓存）
+   */
+  async getUserStorageUsage(
+    userId: string,
+    options?: { recalculate?: boolean },
+  ): Promise<ServerStorageUsage> {
+    // 缓存有效，直接返回
+    if (!options?.recalculate && calculatedAt > 0 && !cacheExpired) {
+      return this.buildCachedResponse(userId, user, cachedUsed, quotaBytes);
+    }
+    // ...
+  }
+}
+```
+
+### 注释原则
+
+- 使用中文注释，保持简洁明了
+- 优先解释 **Why**（为什么）而非 **What**（做了什么）
+- 对业务特有概念补充背景（如"Yjs 快照用于加速客户端同步"）
+- 不要添加显而易见的注释（如 `// 增加 1`）
 
 不得引用或依赖仓库外的个人 Skill、个人资料目录或未注册项目。

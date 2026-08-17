@@ -36,6 +36,7 @@ import { getJwtModuleOptions } from '../../config/jwt.config';
   ],
   controllers: [SyncController],
   providers: [SyncGateway, SnapshotService, DocumentProjectionService],
+  exports: [SyncGateway],
 })
 export class SyncModule {}
 

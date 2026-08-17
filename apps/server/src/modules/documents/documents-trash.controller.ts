@@ -19,7 +19,7 @@ export class DocumentsTrashController {
   /**
    * 回收站列表
    * @param page 页码，默认 1
-   * @param pageSize 每页条数，默认 20
+   * @param pageSize 每页条数，默认 20（服务层会 clamp 到 1~100）
    */
   @Get()
   async getTrashDocuments(

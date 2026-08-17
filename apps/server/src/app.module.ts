@@ -13,6 +13,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { BullModule } from "@nestjs/bullmq";
+import { ThrottlerModule } from "@nestjs/throttler";
 
 import { AiModule } from "./modules/ai/ai.module";
 import { DocumentsModule } from "./modules/documents/documents.module";
@@ -36,6 +37,7 @@ import {
       cache: true,
       expandVariables: true,
     }),
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

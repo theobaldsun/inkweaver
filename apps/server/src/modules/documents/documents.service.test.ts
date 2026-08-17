@@ -42,6 +42,7 @@ test('初始快照版本与持久化后的 updateId 保持一致', async () => {
     storageUsageService as never,
     {} as never,
     { async scheduleReindex() {}, async deleteByDocId() {} } as never,
+    { evictFromDocRoom() {} } as never,
   );
 
   await service.createDocument('user-1', { title: '标题', content: '正文' });
@@ -76,6 +77,7 @@ test('初始快照失败时删除文档并抛出 500', async () => {
     { scheduleRecalculate() {} } as never,
     {} as never,
     { async scheduleReindex() {}, async deleteByDocId() {} } as never,
+    { evictFromDocRoom() {} } as never,
   );
 
   await assert.rejects(

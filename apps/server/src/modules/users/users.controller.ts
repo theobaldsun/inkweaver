@@ -22,6 +22,7 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import type { Request as ExpressRequest, Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiConsumes } from '@nestjs/swagger';
 
@@ -41,6 +42,7 @@ import { UserDataService } from './user-data.service';
 @Controller('/api/users')
 @ApiTags('users')
 @ApiBearerAuth()
+@UseGuards(ThrottlerGuard)
 export class UsersController {
   constructor(
     private readonly usersService: UsersService,
@@ -60,6 +62,7 @@ export class UsersController {
 
   @ApiOperation({ summary: '用户登录' })
   @Post('/login')
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   async login(@Body() dto: LoginDto, @Request() req: ExpressRequest) {
     const clientMeta = parseClientMeta(
       req.headers['user-agent'],

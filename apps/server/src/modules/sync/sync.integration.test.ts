@@ -41,6 +41,7 @@ test('REST push 后以快照恢复，并从快照游标继续拉取增量', { sk
     { scheduleProjection() {} } as never,
     snapshotService,
     { broadcastDocUpdates() {} } as never,
+    dataSource,
   );
   const request = { user: { sub: 'integration-user' } } as never;
   const docId = 'integration-sync-document';

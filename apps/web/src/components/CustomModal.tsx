@@ -199,9 +199,17 @@ export const Alert: React.FC = () => {
 
 /**
  * 显示全局 Alert。
- * @returns 用户点击确定后 resolve true
+ *
+ * 注意：若已有 Alert 在显示中，新的调用会先 resolve 旧 Promise（以 false），
+ * 再展示新 Alert，防止旧 Promise 永远挂起。
+ *
+ * @returns 用户点击确定后 resolve true；若被新 Alert 抢占则 resolve false
  */
 export const showAlert = (title: string, message: string, type: AlertConfig['type'] = 'info'): Promise<boolean> => {
+  // 若已有 Alert 正在显示，先 resolve 旧 Promise（避免内存泄漏）
+  if (alertState?.isOpen) {
+    alertState.resolve(false);
+  }
   return new Promise((resolve) => {
     alertState = {
       isOpen: true,

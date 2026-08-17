@@ -2,8 +2,25 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import * as Y from 'yjs';
+import type { DataSource, EntityManager } from 'typeorm';
 
 import { SyncGateway } from './sync.gateway';
+
+function createMockDataSource(
+  managerOverrides: Record<string, unknown> = {},
+): DataSource {
+  const defaultManager: Record<string, unknown> = {
+    findOne: async () => null,
+    create: (_entity: unknown, plainObject: unknown) => ({ ...(plainObject as object) }),
+    save: async (entity: unknown) => entity,
+  };
+  return {
+    async transaction<T>(work: (manager: EntityManager) => Promise<T>): Promise<T> {
+      const manager = { ...defaultManager, ...managerOverrides } as unknown as EntityManager;
+      return work(manager);
+    },
+  } as unknown as DataSource;
+}
 
 test('握手 JWT 载荷缺少 sub 时断开连接', async () => {
   let disconnected = false;
@@ -18,6 +35,7 @@ test('握手 JWT 载荷缺少 sub 时断开连接', async () => {
         return {};
       },
     } as never,
+    {} as never,
   );
   const client = {
     id: 'socket-missing-sub',
@@ -47,6 +65,7 @@ test('文档归属校验失败时不允许加入同步房间', async () => {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
   );
   const client = {
     id: 'socket-intruder',
@@ -67,6 +86,7 @@ test('文档归属校验失败时不允许加入同步房间', async () => {
 
 test('空 docId 时拒绝加入房间', async () => {
   const gateway = new SyncGateway(
+    {} as never,
     {} as never,
     {} as never,
     {} as never,
@@ -118,6 +138,7 @@ test('非法 Base64 update 时返回失败并 emit update-error', async () => {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
   );
   const client = {
     id: 'socket-bad-update',
@@ -144,6 +165,14 @@ test('非法 Base64 update 时返回失败并 emit update-error', async () => {
 test('版本冲突时 emit conflict 且不写入', async () => {
   let conflictPayload: { docId?: string } | undefined;
   let saved = false;
+  const mockDataSource = createMockDataSource({
+    findOne: async () => ({ updateId: 9 }),
+    create: (_entity: unknown, plainObject: object) => plainObject,
+    save: async (entity: object) => {
+      saved = true;
+      return { ...entity, updateId: 10 };
+    },
+  });
   const gateway = new SyncGateway(
     {
       async findOne() {
@@ -164,6 +193,7 @@ test('版本冲突时 emit conflict 且不写入', async () => {
     {} as never,
     {} as never,
     {} as never,
+    mockDataSource as never,
   );
   const client = {
     id: 'socket-conflict',

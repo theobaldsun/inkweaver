@@ -127,6 +127,9 @@ export interface SyncService {
   /** 当前 socket 是否处于连接状态 */
   isWebSocketConnected(): boolean;
 
+  /** 断开 socket 连接并清理所有房间状态（用户登出时调用） */
+  disconnectSocket(): void;
+
   /** 底层同步引擎，供页面透传使用 */
   readonly syncEngine: SyncEngine;
   /** 本地存储适配器，供页面透传使用 */

@@ -52,6 +52,13 @@ export class Session {
   refreshTokenHash!: string;
 
   /**
+   * 刷新令牌的 SHA-256 哈希，用于快速定位会话，避免逐条 bcrypt 扫描。
+   */
+  @Column({ type: 'varchar', nullable: true })
+  @ApiProperty({ description: '刷新令牌的 SHA-256 哈希（用于快速定位）' })
+  refreshTokenLookup?: string;
+
+  /**
    * 设备信息
    */
   @Column({ type: 'varchar', nullable: true })
@@ -88,22 +95,22 @@ export class Session {
   /**
    * 过期时间
    */
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz' })
   @ApiProperty({ description: '过期时间' })
   expiresAt!: Date;
 
   /**
    * 最后活动时间
    */
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   @ApiProperty({ description: '最后活动时间' })
   lastActivityAt!: Date;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   @ApiProperty({ description: '创建时间' })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   @ApiProperty({ description: '更新时间' })
   updatedAt!: Date;
 }

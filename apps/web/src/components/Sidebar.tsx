@@ -343,7 +343,8 @@ const Sidebar: React.FC = () => {
           <Plus size={18} />
           <span>新建文档</span>
         </button>
-        <button className="recycle-bin-btn">
+        {/* 修复 WEB-P2-11：回收站按钮添加 onClick 导航，原为死按钮 */}
+        <button className="recycle-bin-btn" onClick={() => navigate('/trash')}>
           <Trash2 size={16} />
           <span>回收站</span>
         </button>

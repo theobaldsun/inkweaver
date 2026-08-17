@@ -65,45 +65,50 @@ export class DocumentProjectionService {
    */
   async projectDocument(docId: string): Promise<void> {
     const yDoc = new Y.Doc();
-    let snapshotVersion = 0;
-    let restoredSnapshot = false;
-    const latestSnapshot = await this.docSnapshotRepository.findOne({
-      where: { docId },
-      order: { version: 'DESC' },
-    });
 
-    if (latestSnapshot) {
-      try {
-        Y.applyUpdate(yDoc, base64ToUint8Array(latestSnapshot.snapshot));
-        snapshotVersion = latestSnapshot.version;
-        restoredSnapshot = true;
-      } catch (error) {
-        this.logger.warn(`应用快照失败，回退到完整更新重放 docId=${docId}`, error);
+    try {
+      let snapshotVersion = 0;
+      let restoredSnapshot = false;
+      const latestSnapshot = await this.docSnapshotRepository.findOne({
+        where: { docId },
+        order: { version: 'DESC' },
+      });
+
+      if (latestSnapshot) {
+        try {
+          Y.applyUpdate(yDoc, base64ToUint8Array(latestSnapshot.snapshot));
+          snapshotVersion = latestSnapshot.version;
+          restoredSnapshot = true;
+        } catch (error) {
+          this.logger.warn(`应用快照失败，回退到完整更新重放 docId=${docId}`, error);
+        }
       }
-    }
 
-    const updates = await this.syncUpdateRepository.find({
-      where: {
-        docId,
-        updateId: MoreThan(snapshotVersion),
-      },
-      order: { updateId: 'ASC' },
-    });
+      const updates = await this.syncUpdateRepository.find({
+        where: {
+          docId,
+          updateId: MoreThan(snapshotVersion),
+        },
+        order: { updateId: 'ASC' },
+      });
 
-    if (!restoredSnapshot && updates.length === 0) {
-      return;
-    }
-
-    for (const row of updates) {
-      try {
-        Y.applyUpdate(yDoc, base64ToUint8Array(row.update));
-      } catch (error) {
-        this.logger.error(`应用 update ${row.updateId} 失败 docId=${docId}`, error);
+      if (!restoredSnapshot && updates.length === 0) {
         return;
       }
-    }
 
-    const { title, content } = extractProjectedFields(yDoc);
-    await this.documentsService.projectSearchableContent(docId, title, content);
+      for (const row of updates) {
+        try {
+          Y.applyUpdate(yDoc, base64ToUint8Array(row.update));
+        } catch (error) {
+          this.logger.error(`应用 update ${row.updateId} 失败 docId=${docId}`, error);
+          return;
+        }
+      }
+
+      const { title, content } = extractProjectedFields(yDoc);
+      await this.documentsService.projectSearchableContent(docId, title, content);
+    } finally {
+      yDoc.destroy();
+    }
   }
 }

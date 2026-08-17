@@ -10,7 +10,8 @@ export class Folder {
   @Column({ type: 'varchar' })
   name!: string;
 
-  @Column({ type: 'varchar', nullable: true })
+  /** 父文件夹 ID（uuid 类型，与自身 id 保持一致以便外键关联） */
+  @Column({ type: 'uuid', nullable: true })
   parentId!: string | null;
 
   @Column({ type: 'varchar', nullable: true })

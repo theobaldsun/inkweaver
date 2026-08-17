@@ -118,27 +118,42 @@ interface StoredTokens {
 }
 
 /**
+ * 模块级共享刷新状态（所有 axios 实例共用，防止多实例同时刷新 token 导致竞态）。
+ *
+ * 背景：createApiClient 是工厂函数，userApi / storageApi 等模块会创建独立实例
+ * （用于 blob 下载、multipart 上传等特殊场景）。若每个实例独立管理刷新状态，
+ * 多个 401 会触发多次 refresh 请求，而 refresh token rotation 下第二次刷新会因
+ * 旧 refresh_token 已失效而失败。
+ *
+ * 解决方案：将刷新锁和等待队列提升为模块级变量，所有实例共享同一刷新流程。
+ */
+let sharedIsRefreshing = false;
+let sharedRefreshQueue: Array<{
+  resolve: (token: string) => void;
+  reject: (error: unknown) => void;
+}> = [];
+
+/**
  * 创建API客户端工厂函数
  * @param options 配置选项
  * @returns axios实例
  */
 export function createApiClient(options: { baseURL?: string; timeout?: number } = {}): AxiosInstance {
   const config = { ...DEFAULT_CONFIG, ...options };
-  let isRefreshing = false;
-  let refreshQueue: Array<{
-    resolve: (token: string) => void;
-    reject: (error: unknown) => void;
-  }> = [];
 
+  /**
+   * 处理共享刷新队列：将结果分发给所有等待中的请求，然后清空队列。
+   * 所有 createApiClient 实例共用同一队列，防止多实例并发刷新。
+   */
   const processRefreshQueue = (error: unknown | null, token: string | null = null) => {
-    refreshQueue.forEach(({ resolve, reject }) => {
+    sharedRefreshQueue.forEach(({ resolve, reject }) => {
       if (error || !token) {
         reject(error ?? new Error('刷新令牌失败'));
       } else {
         resolve(token);
       }
     });
-    refreshQueue = [];
+    sharedRefreshQueue = [];
   };
 
   const refreshAccessToken = async (): Promise<string> => {
@@ -216,9 +231,9 @@ export function createApiClient(options: { baseURL?: string; timeout?: number } 
         !originalRequest._retry &&
         !isPublicAuthRequest(originalRequest)
       ) {
-        if (isRefreshing) {
+        if (sharedIsRefreshing) {
           return new Promise((resolve, reject) => {
-            refreshQueue.push({
+            sharedRefreshQueue.push({
               resolve: (token: string) => {
                 originalRequest.headers.Authorization = `Bearer ${token}`;
                 originalRequest._retry = true;
@@ -230,7 +245,7 @@ export function createApiClient(options: { baseURL?: string; timeout?: number } 
         }
 
         originalRequest._retry = true;
-        isRefreshing = true;
+        sharedIsRefreshing = true;
 
         try {
           const newToken = await refreshAccessToken();
@@ -251,7 +266,7 @@ export function createApiClient(options: { baseURL?: string; timeout?: number } 
             }
           }
         } finally {
-          isRefreshing = false;
+          sharedIsRefreshing = false;
         }
       } else if (error.response?.status === 401) {
         const skipRedirect =

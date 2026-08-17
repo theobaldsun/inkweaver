@@ -7,7 +7,7 @@ import { FileText, PlusCircle, List, Grid3X3, Trash2, Calendar, Loader2, Folder,
 import { useNavigate } from 'react-router-dom';
 import { documentService } from '../services/apiClient';
 import { useFolders } from '../contexts/FolderContext';
-import CustomModal from '../components/CustomModal';
+import CustomModal, { showAlert } from '../components/CustomModal';
 import type { Document, Folder as FolderType } from '@inkweaver/shared';
 import { TRASH_RETENTION_DAYS } from '@inkweaver/shared';
 
@@ -219,7 +219,9 @@ const NoteListPage: React.FC = () => {
       ));
       await refreshFolders();
     } catch (error) {
+      // 修复 WEB-P2-07：移动失败时通过 showAlert 通知用户，而非仅 console.error
       console.error('Failed to move note:', error);
+      await showAlert('移动失败', error instanceof Error ? error.message : '文档移动失败，请稍后重试', 'error');
     } finally {
       setMoveConfirm({ isOpen: false, noteId: '', noteTitle: '', targetFolderId: null });
     }
@@ -275,7 +277,9 @@ const NoteListPage: React.FC = () => {
       await documentService.deleteDocument(deleteConfirm.noteId);
       setNotes(prev => prev.filter(note => note.id !== deleteConfirm.noteId));
     } catch (error) {
+      // 修复 WEB-P2-07：删除失败时通过 showAlert 通知用户，而非仅 console.error
       console.error('Failed to delete note:', error);
+      await showAlert('删除失败', error instanceof Error ? error.message : '文档删除失败，请稍后重试', 'error');
     } finally {
       setDeleteConfirm({ isOpen: false, noteId: '', noteTitle: '' });
     }
