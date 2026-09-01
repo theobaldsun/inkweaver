@@ -42,6 +42,6 @@ import { VECTOR_STORE } from './vector/vector-store.token';
       useExisting: PgVectorStore,
     },
   ],
-  exports: [DocumentIndexService],
+  exports: [DocumentIndexService, EmbeddingClient, PgVectorStore, VECTOR_STORE],
 })
 export class AiModule {}

@@ -118,4 +118,50 @@ export class PgVectorStore implements VectorStore {
       score: Number(row.score),
     }));
   }
+
+  /**
+   * 语义向量检索（搜索通道④专用，区别于 RAG 的 similaritySearch）。
+   *
+   * 策略：
+   * 1. 事务内 SET LOCAL hnsw.ef_search = 128（默认 40 会导致 recall 掉到 80% 以下）
+   * 2. HNSW ANN top5000 分块（无索引时规划器自动回退精确 KNN，小用户不受影响）
+   * 3. 余弦距离 < 0.7 硬阈值过滤噪声分块（相似度 < 30% 的挡在候选池外）
+   * 4. DISTINCT ON ("docId") 文档级聚合，每篇文档只留最高分块
+   *
+   * @returns docId / excerpt(最高分块内容) / sim(余弦相似度 0~1)
+   */
+  async semanticSearchForHybrid(
+    userId: string,
+    queryEmbedding: number[],
+  ): Promise<Array<{ docId: string; excerpt: string; sim: number }>> {
+    const vector = toPgVectorLiteral(queryEmbedding);
+    return this.dataSource.transaction(async (manager) => {
+      // SET LOCAL 仅在事务内生效，不影响连接池复用该连接的后续查询
+      await manager.query(`SET LOCAL hnsw.ef_search = 128`);
+      const rows: Array<{ docId: string; excerpt: string; sim: string | number }> =
+        await manager.query(
+          `WITH ranked_chunks AS (
+             SELECT c."docId", c.content AS excerpt,
+                    1 - (c.embedding <=> $1::vector) AS sim
+             FROM document_chunks c
+             WHERE c."userId" = $2
+               AND (c.embedding <=> $1::vector) < 0.7
+             ORDER BY c.embedding <=> $1::vector ASC
+             LIMIT 5000
+           ),
+           doc_scores AS (
+             SELECT DISTINCT ON ("docId") "docId", sim, excerpt
+             FROM ranked_chunks
+             ORDER BY "docId", sim DESC
+           )
+           SELECT "docId", excerpt, sim FROM doc_scores`,
+          [vector, userId],
+        );
+      return rows.map((r) => ({
+        docId: r.docId,
+        excerpt: r.excerpt,
+        sim: Number(r.sim),
+      }));
+    });
+  }
 }

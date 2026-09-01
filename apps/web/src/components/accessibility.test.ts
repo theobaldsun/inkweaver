@@ -81,11 +81,13 @@ test('rich editor link modal exposes dialog semantics and Escape dismissal', asy
 });
 
 test('editor connection status subscribes to socket lifecycle updates', async () => {
-  const syncService = await source('apps/web/src/services/syncService.ts');
+  const syncClient = await source('packages/sync-client/src/syncService.ts');
+  const webSyncService = await source('apps/web/src/services/syncService.ts');
   const page = await source('apps/web/src/pages/DocumentEditPage.tsx');
 
-  assert.match(syncService, /connectionListeners/);
-  assert.match(syncService, /onConnectionChange/);
+  assert.match(syncClient, /connectionListeners/);
+  assert.match(syncClient, /const onConnectionChange/);
+  assert.match(webSyncService, /onConnectionChange/);
   assert.match(page, /onConnectionChange/);
 });
 
@@ -97,9 +99,9 @@ test('remote sync updates are tagged and never re-enqueued as local pending upda
 });
 
 test('web sync pull uses the shared cursor advancement policy', async () => {
-  const syncService = await source('apps/web/src/services/syncService.ts');
+  const syncClient = await source('packages/sync-client/src/syncService.ts');
 
-  assert.match(syncService, /resolveSyncPullPage/);
+  assert.match(syncClient, /resolveSyncPullPage/);
 });
 
 test('throttled local persistence merges every Yjs update instead of dropping intermediate edits', async () => {
@@ -112,7 +114,8 @@ test('throttled local persistence merges every Yjs update instead of dropping in
 test('document editor removes Yjs and socket listeners when switching documents', async () => {
   const page = await source('apps/web/src/pages/DocumentEditPage.tsx');
 
-  assert.match(page, /offUpdate\(id, handleRemoteUpdates\)/);
+  assert.match(page, /const unsubscribeDocRoom = subscribeDocRoom\(id, handleRemoteUpdates\)/);
+  assert.match(page, /unsubscribeDocRoom\(\)/);
   assert.match(page, /yDoc\.off\('update', handleUpdate\)/);
   assert.match(page, /yMap\.unobserve\(handleMapUpdate\)/);
 });

@@ -1,8 +1,9 @@
 import { Controller, Get, Post, Delete, Query, Request, UseGuards } from "@nestjs/common";
-import type { Request as ExpressRequest } from "express";
-import { AuthGuard } from "../auth/guard/auth.guard";
-import { SearchService } from "./search.service";
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
+
+import { SearchHybridDto } from "./dto/search.dto";
+import { SearchService } from "./search.service";
+import { AuthGuard } from "../auth/guard/auth.guard";
 
 @Controller("/api/search")
 @ApiTags('search')
@@ -16,12 +17,19 @@ export class SearchController {
   @ApiResponse({ status: 401, description: '未授权' })
   @Get("/history")
   async getSearchHistory(
-    @Request() req: ExpressRequest,
+    @Request() req: { user?: { sub: string } },
     @Query("limit") limit: number = 10,
   ) {
-    const userId = (req.user as any)?.sub;
+    const userId = req.user!.sub;
     const history = await this.searchService.getSearchHistory(userId, limit);
-    return { history: history.map(h => ({ keyword: h.keyword, count: h.count, updatedAt: h.updatedAt })) };
+    return {
+      history: history.map((h) => ({
+        keyword: h.keyword,
+        count: h.count,
+        updatedAt: h.updatedAt,
+        mode: h.mode || 'smart',
+      })),
+    };
   }
 
   @ApiOperation({ summary: '添加搜索历史' })
@@ -29,11 +37,12 @@ export class SearchController {
   @ApiResponse({ status: 401, description: '未授权' })
   @Post("/history")
   async addSearchHistory(
-    @Request() req: ExpressRequest,
+    @Request() req: { user?: { sub: string } },
     @Query("keyword") keyword: string,
+    @Query("mode") mode: 'smart' | 'keyword' | 'semantic' = 'smart',
   ) {
-    const userId = (req.user as any)?.sub;
-    await this.searchService.addSearchHistory(userId, keyword);
+    const userId = req.user!.sub;
+    await this.searchService.addSearchHistory(userId, keyword, mode);
     return { message: '添加成功' };
   }
 
@@ -42,20 +51,32 @@ export class SearchController {
   @ApiResponse({ status: 401, description: '未授权' })
   @Delete("/history")
   async deleteSearchHistory(
-    @Request() req: ExpressRequest,
+    @Request() req: { user?: { sub: string } },
     @Query("keyword") keyword: string,
   ) {
-    const userId = (req.user as any)?.sub;
+    const userId = req.user!.sub;
     await this.searchService.deleteSearchHistory(userId, keyword);
     return { message: '删除成功' };
+  }
+
+  @ApiOperation({ summary: '混合检索文档（四路融合）' })
+  @ApiResponse({ status: 200, description: '检索成功' })
+  @ApiResponse({ status: 401, description: '未授权' })
+  @Get("/hybrid")
+  async hybridSearch(
+    @Request() req: { user?: { sub: string } },
+    @Query() query: SearchHybridDto
+  ) {
+    const userId = req.user!.sub;
+    return this.searchService.hybridSearch(userId, query.q, Number(query.page), Number(query.pageSize), query.mode);
   }
 
   @ApiOperation({ summary: '清空搜索历史' })
   @ApiResponse({ status: 200, description: '清空成功' })
   @ApiResponse({ status: 401, description: '未授权' })
   @Delete("/history/all")
-  async clearSearchHistory(@Request() req: ExpressRequest) {
-    const userId = (req.user as any)?.sub;
+  async clearSearchHistory(@Request() req: { user?: { sub: string } }) {
+    const userId = req.user!.sub;
     await this.searchService.clearSearchHistory(userId);
     return { message: '清空成功' };
   }

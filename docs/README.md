@@ -6,7 +6,7 @@
 
 | 文档 | 内容 | 主要事实来源 |
 |------|------|--------------|
-| [架构.md](./架构.md) | Monorepo 分层、依赖边界、本地优先与同步链路 | `package.json`、`apps/`、`packages/` |
+| [架构.md](./架构.md) | Monorepo 分层、依赖边界、本地优先与同步链路、功能模块架构概览 | `package.json`、`apps/`、`packages/` |
 | [UI规范.md](./UI规范.md) | 设计令牌、组件、编辑器和响应式约定 | `apps/web/src/index.css`、`packages/ui`、`packages/editor-web` |
 | [运维.md](./运维.md) | 本地环境、Docker、生产部署、迁移、监控与常见故障 | Compose、`deploy/`、`apps/server` |
 
@@ -18,6 +18,7 @@
 - `packages/`：共享类型、平台适配、API、业务服务、存储、同步、编辑器与 UI。
 - `deploy/`：生产脚本、Nginx 配置和本地实例信息模板。
 - 根目录 `package.json`：开发、构建、lint 与 typecheck 命令的唯一脚本清单。
+- `docs/notes/`：技术笔记独立文件，按编号组织，主文件 docs/技术笔记.md 作导览。
 
 ## 维护原则
 
@@ -27,6 +28,7 @@
 - 环境变量、部署脚本、迁移或监控方式变化时更新 `运维.md`。
 - 已关闭 Bug、一次性验收状态、迁移过程记录和旧文件名跳转不进入长期文档；必要信息应归并为仍可执行的规则或排障步骤。
 - 不记录密码、Token、私钥、完整 `.env`、真实服务器地址或其他实例私密信息。
+- 技术笔记按编号独立成文于 `docs/notes/`，主文件仅作导览；新增笔记时同步更新目录表。
 
 ## 验证入口
 

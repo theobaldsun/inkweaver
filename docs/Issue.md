@@ -730,3 +730,70 @@
 - **修复**：添加 `onClick={() => navigate('/trash')}`，使按钮导航到回收站页面。
 - **验证**：`pnpm --filter @inkweaver/web typecheck` 通过
 - **教训**：UI 组件中的按钮必须有明确的交互行为。代码审查时应关注无 onClick 的 button/链接元素，可通过 ESLint `jsx-a11y/click-events-have-key-events` 规则自动检测。
+
+---
+
+## #41 searchFuzzy SQL `tsvector_to_array(plainto_tsquery(...))` 类型不匹配
+
+- **日期**：2026-08-31
+- **模块**：`apps/server/src/modules/search/search.service.ts` 的 `searchFuzzy`
+- **现象**：matchedTermCount 计算表达式 `array_length(tsvector_to_array("docTsv") && tsvector_to_array(plainto_tsquery('simple', $2)), 1)` 在 PostgreSQL 运行时抛类型错误，被 `hybridSearch` 的 `.catch(() => [])` 静默吞掉，fuzzy 通道在融合阶段降级为空数组，用户感知不到但搜索结果实际只来自 exact/related/semantic 三路。
+- **根因**：双重错误叠加：
+  1. `tsvector_to_array` 期望参数类型为 `tsvector`，但 `plainto_tsquery` 返回 `tsquery`，类型不匹配
+  2. `&&` 在 PostgreSQL 中是数组 Overlap 操作符，返回 `boolean` 而非数组，再传给 `array_length(boolean, 1)` 第二次类型错误
+- **修复**（待落地，SQL 已验证语法）：
+  - `tsquery` → `tsvector` 转换：用 `to_tsvector('simple', $2)` 替代 `plainto_tsquery('simple', $2)`（仅用于 matchedTermCount 计算，`ts_headline`/`ts_rank_cd`/`@@` 仍保留 `plainto_tsquery`）
+  - `&&` boolean → INTERSECT 集合：用 `unnest + INTERSECT + ARRAY` 把交集重新聚合成数组
+  - `array_length` → `cardinality`：对空数组返回 0 而非 NULL，避免 `NULL + score` 污染精排权重
+  - 最终 SQL：
+    ```sql
+    cardinality(
+      ARRAY(
+        SELECT unnest(tsvector_to_array("docTsv"))
+        INTERSECT
+        SELECT unnest(tsvector_to_array(to_tsvector('simple', $2)))
+      )
+    ) AS "matchedTermCount"
+    ```
+- **验证**：待代码落地后跑 `pnpm --filter @inkweaver/server typecheck` 与 SQL EXPLAIN；预期 fuzzy 通道返回非零 matchedTermCount
+- **深度笔记**：[docs/notes/笔记-08-PostgreSQL-数组与-jsonb-操作符语义边界.md](file:///d:/Codex_Workspaces/software-development/projects/SyncBox-AI/docs/notes/笔记-08-PostgreSQL-数组与-jsonb-操作符语义边界.md)（含 `@>`/`?|`/`&&` 三操作符语义对照与跨域转换）
+- **教训**：
+  - `tsvector_to_array` 严格期望 tsvector 入参，不能用 tsquery 替代，混淆 pg 全文检索两类核心类型会导致静默错误
+  - `&&` 对数组返回 boolean（Overlap），不是返回交集数组；判断"有交集"用 `&&`，要算"交集有几个"必须走 `unnest + INTERSECT`
+  - `.catch(() => [])` 式降级会把 SQL 类型错误也吞掉，应配对 logger.warn 让异常可见，否则 bug 隐蔽数月无人察觉
+
+---
+
+## #42 searchExact/searchRelated tags 操作符与 jsonb 类型不匹配
+
+- **日期**：2026-08-31
+- **模块**：`apps/server/src/modules/search/search.service.ts` 的 `searchExact` 和 `searchRelated`
+- **现象**：`documents.tags` 列定义为 `jsonb`（[document.entity.ts#L32-L33](file:///d:/Codex_Workspaces/software-development/projects/SyncBox-AI/apps/server/src/modules/documents/entity/document.entity.ts#L32-L33)），但 SQL 使用了数组专属操作符：
+  - `searchExact`：`tags @> $3::varchar[]`（CASE 与 WHERE 各一处）
+  - `searchRelated`：`tags && $5::varchar[]`
+  
+  三处在 PostgreSQL 运行时全部抛类型错误，被 `hybridSearch` 的 `.catch(() => [])` 静默吞掉。结果：exact 通道只剩"标题等于/ILIKE 关键词"两条路径（tags 包含全部 token 的 90 分路径丢失），related 通道的"+10 tags 命中"维度失效，整体融合结果质量下降但表面看仍"能返回结果"。
+- **根因**：PostgreSQL 的操作符按"类型域"划分，数组和 jsonb 各有独立操作符集：
+  - `@>` 同时存在于 array 和 jsonb 域，但右操作数类型必须匹配左操作数所在域
+  - `&&` 仅存在于 array 域，对 jsonb **不存在该操作符**
+  - 实体声明 jsonb 但 SQL 写成数组操作符，类型不匹配
+- **修复**（待落地）：保留 jsonb 列类型，改用 jsonb 原生操作符，参数列表不变：
+  - `tags @> $3::varchar[]` → `tags @> to_jsonb($3::varchar[])`（`@>` 语义不变，仅把右操作数转成 jsonb 数组）
+  - `tags && $5::varchar[]` → `tags ?| $5::varchar[]`（`?|` 是 jsonb 的"任一 key 存在"操作符，语义等价于数组 `&&`）
+  
+  注意 `@>` 与 `?|` 语义不能互换：
+  - `@>` = "包含全部"（AND 语义，exact 通道用）
+  - `?|` = "任一存在"（OR 语义，related 通道用）
+  
+  互换会导致 exact 通道过度召回（"全部包含"降级为"任一存在"）。
+- **验证**：待代码落地后跑 `pnpm --filter @inkweaver/server typecheck`；预期三处 SQL 不再被 .catch 吞掉，exact/related 两路在融合阶段实际贡献分数
+- **性能注意**：`@>` 和 `?|` 走索引需要 GIN 索引：
+  ```sql
+  CREATE INDEX IF NOT EXISTS idx_documents_tags_gin ON documents USING GIN (tags);
+  ```
+  现有 migrations 若未建该索引，建议补一条迁移脚本
+- **深度笔记**：同 #41，[笔记-08](file:///d:/Codex_Workspaces/software-development/projects/SyncBox-AI/docs/notes/笔记-08-PostgreSQL-数组与-jsonb-操作符语义边界.md)
+- **教训**：
+  - TypeORM entity 的列类型定义与 SQL 操作符必须严格对齐：声明 jsonb 就只能用 jsonb 域操作符（`@>` `?` `?|` `?&`），声明 array 才能用 `@>` `&&` `<@`
+  - `@>` 跨域同名但语义不同：array 的 `@>` 是"包含所有元素"，jsonb 的 `@>` 是"JSON 结构包含"，右操作数类型决定走哪个域
+  - `.catch(() => [])` 是双刃剑：单路失败降级保融合可用，但也会吞掉 SQL 类型错误这类"应该可见"的故障；建议至少配对 logger.warn

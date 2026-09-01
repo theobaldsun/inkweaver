@@ -42,6 +42,14 @@ export interface VectorStore {
     topK: number,
     docIds?: string[],
   ): Promise<SimilarityHit[]>;
+
+  /**
+   * 语义向量检索（搜索通道④专用，返回文档级聚合结果）。
+   */
+  semanticSearchForHybrid(
+    userId: string,
+    queryEmbedding: number[],
+  ): Promise<Array<{ docId: string; excerpt: string; sim: number }>>;
 }
 
 /** 后期 Qdrant 实现占位，避免误用。 */
@@ -55,6 +63,10 @@ export class QdrantVectorStore implements VectorStore {
   }
 
   async similaritySearch(): Promise<SimilarityHit[]> {
+    throw new Error('QdrantVectorStore 尚未实现；当前请使用 PgVectorStore');
+  }
+
+  async semanticSearchForHybrid():Promise<Array<{ docId: string; excerpt: string; sim: number }>> {
     throw new Error('QdrantVectorStore 尚未实现；当前请使用 PgVectorStore');
   }
 }

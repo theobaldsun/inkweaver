@@ -2,21 +2,26 @@
  * DocumentsService 单测。
  */
 
-import assert from 'node:assert/strict';
-import test from 'node:test';
+import assert from "node:assert/strict";
+import test from "node:test";
 
-import { InternalServerErrorException } from '@nestjs/common';
+import { InternalServerErrorException } from "@nestjs/common";
 
-import { DocumentsService } from './documents.service';
+import { DocumentsService } from "./documents.service";
 
-test('初始快照版本与持久化后的 updateId 保持一致', async () => {
+test("初始快照版本与持久化后的 updateId 保持一致", async () => {
   let snapshotVersion: number | undefined;
+  let docTsvParams: unknown[] | undefined;
   const documentsRepository = {
     create(value: object) {
-      return { id: 'doc-1', ...value };
+      return { id: "doc-1", ...value };
     },
     async save(value: object) {
       return value;
+    },
+    async query(sql: string, params: unknown[]) {
+      assert.match(sql, /UPDATE documents/);
+      docTsvParams = params;
     },
     async delete() {},
   };
@@ -43,29 +48,33 @@ test('初始快照版本与持久化后的 updateId 保持一致', async () => {
     {} as never,
     { async scheduleReindex() {}, async deleteByDocId() {} } as never,
     { evictFromDocRoom() {} } as never,
+    {} as never, // embeddingClient mock（search 增强后注入，本测试不涉及向量路径）
+    {} as never, // vectorStore mock
   );
 
-  await service.createDocument('user-1', { title: '标题', content: '正文' });
+  await service.createDocument("user-1", { title: "标题", content: "正文" });
 
   assert.equal(snapshotVersion, 42);
+  assert.deepEqual(docTsvParams, ["doc-1", "标题", "正文"]);
 });
 
-test('初始快照失败时删除文档并抛出 500', async () => {
+test("初始快照失败时删除文档并抛出 500", async () => {
   let deletedId: string | undefined;
   const documentsRepository = {
     create(value: object) {
-      return { id: 'doc-orphan', ...value };
+      return { id: "doc-orphan", ...value };
     },
     async save(value: object) {
       return value;
     },
+    async query() {},
     async delete(id: string) {
       deletedId = id;
     },
   };
   const syncUpdateRepository = {
     async save() {
-      throw new Error('db unavailable');
+      throw new Error("db unavailable");
     },
   };
 
@@ -78,11 +87,58 @@ test('初始快照失败时删除文档并抛出 500', async () => {
     {} as never,
     { async scheduleReindex() {}, async deleteByDocId() {} } as never,
     { evictFromDocRoom() {} } as never,
+    {} as never, // embeddingClient mock
+    {} as never, // vectorStore mock
   );
 
   await assert.rejects(
-    () => service.createDocument('user-1', { title: '标题', content: '正文' }),
+    () => service.createDocument("user-1", { title: "标题", content: "正文" }),
     (error: unknown) => error instanceof InternalServerErrorException,
   );
-  assert.equal(deletedId, 'doc-orphan');
+  assert.equal(deletedId, "doc-orphan");
+});
+
+test("docTsv 初始化失败时删除已保存文档且不写入同步基线", async () => {
+  let deletedId: string | undefined;
+  let syncBaselineWritten = false;
+  const documentsRepository = {
+    create(value: object) {
+      return { id: "doc-tsv-failed", ...value };
+    },
+    async save(value: object) {
+      return value;
+    },
+    async query() {
+      throw new Error("docTsv unavailable");
+    },
+    async delete(id: string) {
+      deletedId = id;
+    },
+  };
+  const syncUpdateRepository = {
+    async save() {
+      syncBaselineWritten = true;
+      return { updateId: 1 };
+    },
+  };
+
+  const service = new DocumentsService(
+    documentsRepository as never,
+    {} as never,
+    syncUpdateRepository as never,
+    {} as never,
+    { scheduleRecalculate() {} } as never,
+    {} as never,
+    { async scheduleReindex() {}, async deleteByDocId() {} } as never,
+    { evictFromDocRoom() {} } as never,
+    {} as never,
+    {} as never,
+  );
+
+  await assert.rejects(
+    () => service.createDocument("user-1", { title: "标题", content: "正文" }),
+    (error: unknown) => error instanceof InternalServerErrorException,
+  );
+  assert.equal(deletedId, "doc-tsv-failed");
+  assert.equal(syncBaselineWritten, false);
 });

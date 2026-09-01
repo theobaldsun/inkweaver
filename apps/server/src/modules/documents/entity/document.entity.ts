@@ -53,6 +53,10 @@ export class Document {
   @Column({ type: 'uuid', nullable: true })
   deletedFromFolderId!: string | null;
 
+  /** 最近打开时间，用于搜索关联召回加分；由 getDocument fire-and-forget 写回 */
+  @Column({ type: 'timestamptz', nullable: true })
+  lastOpenedAt!: Date | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

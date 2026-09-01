@@ -36,17 +36,20 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { IsNull, LessThan, Not, Repository } from "typeorm";
 import * as Y from 'yjs';
 
-import { CreateDocumentDto } from "./dto/create-document.dto";
-import { UpdateDocumentDto } from "./dto/update-document.dto";
-import { Document } from "./entity/document.entity";
-import { Folder } from "./entity/folder.entity";
 import { DocumentIndexService } from "../ai/document-index.service";
+import { EmbeddingClient } from "../ai/embedding.client";
+import { VECTOR_STORE } from '../ai/vector/vector-store.token';
 import { NotificationsService } from "../notifications/notifications.service";
 import { StorageUsageService } from "../storage/storage-usage.service";
 import { DocSnapshot } from "../sync/entity/doc-snapshot.entity";
 import { SyncUpdate } from "../sync/entity/sync-update.entity";
 import { SyncGateway } from "../sync/sync.gateway";
+import { CreateDocumentDto } from "./dto/create-document.dto";
+import { UpdateDocumentDto } from "./dto/update-document.dto";
+import { Document } from "./entity/document.entity";
+import { Folder } from "./entity/folder.entity";
 
+import type { VectorStore } from '../ai/vector/vector-store';
 /**
  * 回收站文档条目（扩展 purgeAt 字段供前端展示剩余保留时间）。
  */
@@ -74,6 +77,9 @@ export class DocumentsService {
     private readonly documentIndexService: DocumentIndexService,
     @Inject(forwardRef(() => SyncGateway))
     private readonly syncGateway: SyncGateway,
+    private readonly embeddingClient: EmbeddingClient,
+    @Inject(VECTOR_STORE)
+    private readonly vectorStore: VectorStore
   ) {}
 
   /**
@@ -102,6 +108,7 @@ export class DocumentsService {
 
     const savedDocument = await this.documentsRepository.save(document);
     try {
+      await this.updateDocTsv(savedDocument.id, savedDocument.title, savedDocument.content);
       await this.generateInitialSnapshotAndUpdate(savedDocument.id, createDocumentDto);
     } catch (error) {
       this.logger.error(
@@ -215,9 +222,37 @@ export class DocumentsService {
   }
 
   /**
-   * 获取单个未删除文档（含归属校验）。
+   * 获取单个未删除文档（含归属校验 + lastOpenedAt 副作用）。
+   *
+   * 用途：仅供 Controller 的「用户主动读文档」入口（GET /documents/:id）调用，
+   * 会异步写回 lastOpenedAt 用于搜索关联召回加分。
+   *
+   * 内部 service 复用请改调 loadDocument，避免「生成分享链接」「软删」「更新」
+   * 等非「用户主动打开」场景污染 lastOpenedAt。
    */
   async getDocument(docId: string, userId: string): Promise<Document> {
+    const document = await this.loadDocument(docId, userId);
+    // fire-and-forget：不阻塞读取响应；个人笔记 QPS 低，直接 UPDATE 不会拖慢主流程
+    // 必须挂 .catch 兜底，否则 UPDATE 失败会触发 unhandledRejection 导致进程崩溃
+    this.documentsRepository
+      .update({ id: docId, userId }, { lastOpenedAt: new Date() })
+      .catch((err) =>
+        this.logger.warn(
+          `lastOpenedAt 写回失败 docId=${docId}`,
+          err instanceof Error ? err.stack : String(err),
+        ),
+      );
+    return document;
+  }
+
+  /**
+   * 内部加载文档（无副作用，含归属校验）。
+   *
+   * 与 getDocument 的区别：不写回 lastOpenedAt。
+   * 专供 updateDocument / softDeleteDocument / generateShareLink 等内部方法复用，
+   * 防止「编辑」「删除」「生成分享链接」误触发「最近打开」加分。
+   */
+  private async loadDocument(docId: string, userId: string): Promise<Document> {
     const document = await this.documentsRepository.findOne({
       where: { id: docId, userId, deletedAt: IsNull() },
     });
@@ -266,12 +301,12 @@ export class DocumentsService {
       document.title = title;
       document.content = content;
       const saved = await this.documentsRepository.save(document);
+      await this.updateDocTsv(saved.id, saved.title, saved.content);
       const nextBytes = this.storageUsageService.calculateDocumentBytes(saved.title, saved.content);
       if (nextBytes !== previousBytes) {
         this.storageUsageService.scheduleRecalculate(saved.userId);
       }
     }
-
     await this.documentIndexService.scheduleReindex({
       docId,
       userId: document.userId,
@@ -287,7 +322,8 @@ export class DocumentsService {
    * 字节数变化时调度存储用量重算。
    */
   async updateDocument(docId: string, userId: string, updateDocumentDto: UpdateDocumentDto): Promise<Document> {
-    const document = await this.getDocument(docId, userId);
+    // 内部加载（不走 lastOpenedAt 副作用，避免污染搜索关联召回）
+    const document = await this.loadDocument(docId, userId);
     const previousBytes = this.storageUsageService.calculateDocumentBytes(document.title, document.content);
     if (updateDocumentDto.title !== undefined) document.title = updateDocumentDto.title;
     if (updateDocumentDto.content !== undefined) document.content = updateDocumentDto.content;
@@ -300,6 +336,10 @@ export class DocumentsService {
       document.folderId = updateDocumentDto.folderId;
     }
     const saved = await this.documentsRepository.save(document);
+    // 仅当标题或正文变更时才同步 docTsv，避免无变更时的无谓 UPDATE
+    if (updateDocumentDto.title !== undefined || updateDocumentDto.content !== undefined) {
+      await this.updateDocTsv(saved.id, saved.title, saved.content);
+    }
     const nextBytes = this.storageUsageService.calculateDocumentBytes(saved.title, saved.content);
     if (nextBytes !== previousBytes) {
       this.storageUsageService.scheduleRecalculate(userId);
@@ -335,7 +375,8 @@ export class DocumentsService {
    * 调度存储用量重算，踢出 WebSocket 房间。
    */
   async softDeleteDocument(docId: string, userId: string): Promise<void> {
-    const document = await this.getDocument(docId, userId);
+    // 内部加载（不走 lastOpenedAt 副作用，避免污染搜索关联召回）
+    const document = await this.loadDocument(docId, userId);
     await this.applySoftDelete(document);
     this.storageUsageService.scheduleRecalculate(userId);
     this.syncGateway.evictFromDocRoom(docId);
@@ -396,7 +437,8 @@ export class DocumentsService {
    * 使用 crypto.randomBytes 生成 32 位十六进制 token，拼接 APP_PUBLIC_URL 产出分享 URL。
    */
   async generateShareLink(docId: string, userId: string): Promise<{ shareLink: string; shareUrl: string }> {
-    const document = await this.getDocument(docId, userId);
+    // 内部加载（不走 lastOpenedAt 副作用，避免污染搜索关联召回）
+    const document = await this.loadDocument(docId, userId);
     if (!document.isPublic) {
       throw new ForbiddenException('请先将文档设为公开');
     }
@@ -579,6 +621,22 @@ export class DocumentsService {
   }
 
   /**
+   * 同步文档全文检索列 docTsv。
+   * 标题权重 A，正文权重 D（截断 10 万字避免超长文档拖慢 tsvector 构建）。
+   * 在 createDocument / updateDocument 保存后调用，保证搜索与正文一致。
+   */
+  private async updateDocTsv(docId: string, title: string, content: string): Promise<void> {
+    await this.documentsRepository.query(
+      `UPDATE documents
+       SET "docTsv" =
+         setweight(to_tsvector('simple', COALESCE($2, '')), 'A') ||
+         setweight(to_tsvector('simple', left(COALESCE($3, ''), 100000)), 'D')
+       WHERE id = $1`,
+      [docId, title, content],
+    );
+  }
+
+  /**
    * 搜索文档（标题 + 内容模糊匹配）。
    *
    * 分页参数在 Service 层做 clamp：page 最小 1、pageSize 1~100。
@@ -597,6 +655,7 @@ export class DocumentsService {
   ): Promise<{ documents: Document[]; total: number; page: number; pageSize: number }> {
     page = Math.max(1, Math.floor(page));
     pageSize = Math.min(100, Math.max(1, Math.floor(pageSize)));
+
     const query = this.documentsRepository
       .createQueryBuilder('document')
       .where('document.userId = :userId', { userId })
