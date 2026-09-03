@@ -107,6 +107,8 @@ services:
       dockerfile: apps/server/Dockerfile
     container_name: inkweaver-server
     restart: unless-stopped
+    extra_hosts:
+    - "host.docker.internal:host-gateway"
     env_file:
       - .env.prod
     environment:
@@ -125,6 +127,9 @@ services:
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET: inkweaver
       MINIO_USE_SSL: 'false'
+      AI_EMBED_BASE_URL: ${AI_EMBED_BASE_URL:-http://host.docker.internal:18090}
+      AI_EMBED_TOKEN: ${AI_EMBED_TOKEN}
+      AI_EMBED_TIMEOUT_MS: ${AI_EMBED_TIMEOUT_MS:-60000}
     ports:
       - '127.0.0.1:3000:3000'
     volumes:
