@@ -9,28 +9,29 @@
  * 输出：持久化更新、快照/增量拉取结果、房间广播
  */
 
-import { Module } from "@nestjs/common";
+import { forwardRef, Module } from "@nestjs/common";
+import { JwtModule } from "@nestjs/jwt";
 import { ScheduleModule } from "@nestjs/schedule";
 import { TypeOrmModule } from "@nestjs/typeorm";
-import { JwtModule } from "@nestjs/jwt";
-import { AuthModule } from "../auth/auth.module";
 
+import { DocumentProjectionService } from './document-projection.service';
+import { DocSnapshot } from "./entity/doc-snapshot.entity";
+import { SyncUpdate } from "./entity/sync-update.entity";
+import { SnapshotService } from "./snapshot.service";
 import { SyncController } from "./sync.controller";
 import { SyncGateway } from "./sync.gateway";
-import { SnapshotService } from "./snapshot.service";
-import { DocumentProjectionService } from './document-projection.service';
-import { SyncUpdate } from "./entity/sync-update.entity";
-import { DocSnapshot } from "./entity/doc-snapshot.entity";
-import { StorageModule } from "../storage/storage.module";
-import { DocumentsModule } from "../documents/documents.module";
 import { getJwtModuleOptions } from '../../config/jwt.config';
+import { AuthModule } from "../auth/auth.module";
+import { DocumentsModule } from "../documents/documents.module";
+import { StorageModule } from "../storage/storage.module";
 
 @Module({
   imports: [
     ScheduleModule.forRoot(),
     TypeOrmModule.forFeature([SyncUpdate, DocSnapshot]),
     StorageModule,
-    DocumentsModule,
+    // DocumentsService 与 SyncGateway 双向协作，模块两端都必须延迟解析。
+    forwardRef(() => DocumentsModule),
     AuthModule,
     JwtModule.register(getJwtModuleOptions()),
   ],
@@ -39,4 +40,3 @@ import { getJwtModuleOptions } from '../../config/jwt.config';
   exports: [SyncGateway],
 })
 export class SyncModule {}
-

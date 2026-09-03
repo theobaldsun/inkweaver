@@ -30,6 +30,8 @@ test("SearchInfraUpgrade 创建并回滚 HNSW、docTsv/GIN 和 lastOpenedAt", as
 
   assert.match(upSql, /CREATE EXTENSION IF NOT EXISTS vector/);
   assert.match(upSql, /USING hnsw \(embedding vector_cosine_ops\)/);
+  assert.match(upSql, /WITH \(m = 16, ef_construction = 128\)/);
+  assert.doesNotMatch(upSql, /efConstruction/);
   assert.match(upSql, /ADD COLUMN IF NOT EXISTS "docTsv" tsvector/);
   assert.match(upSql, /USING gin \("docTsv"\)/);
   assert.match(upSql, /ADD COLUMN IF NOT EXISTS "lastOpenedAt" timestamptz/);

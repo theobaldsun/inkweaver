@@ -11,7 +11,9 @@
 
 import {
   BadRequestException,
+  forwardRef,
   HttpException,
+  Inject,
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -72,6 +74,8 @@ export class SyncGateway implements OnGatewayConnection {
     @InjectRepository(SyncUpdate)
     private syncUpdateRepository: Repository<SyncUpdate>,
     private readonly storageUsageService: StorageUsageService,
+    // DocumentsService 反向依赖本 Gateway 执行房间驱逐，需延迟解析循环 Provider。
+    @Inject(forwardRef(() => DocumentsService))
     private readonly documentsService: DocumentsService,
     private readonly documentProjectionService: DocumentProjectionService,
     private readonly snapshotService: SnapshotService,

@@ -741,7 +741,7 @@
 - **根因**：双重错误叠加：
   1. `tsvector_to_array` 期望参数类型为 `tsvector`，但 `plainto_tsquery` 返回 `tsquery`，类型不匹配
   2. `&&` 在 PostgreSQL 中是数组 Overlap 操作符，返回 `boolean` 而非数组，再传给 `array_length(boolean, 1)` 第二次类型错误
-- **修复**（待落地，SQL 已验证语法）：
+- **修复**（已落地）：
   - `tsquery` → `tsvector` 转换：用 `to_tsvector('simple', $2)` 替代 `plainto_tsquery('simple', $2)`（仅用于 matchedTermCount 计算，`ts_headline`/`ts_rank_cd`/`@@` 仍保留 `plainto_tsquery`）
   - `&&` boolean → INTERSECT 集合：用 `unnest + INTERSECT + ARRAY` 把交集重新聚合成数组
   - `array_length` → `cardinality`：对空数组返回 0 而非 NULL，避免 `NULL + score` 污染精排权重
@@ -755,7 +755,7 @@
       )
     ) AS "matchedTermCount"
     ```
-- **验证**：待代码落地后跑 `pnpm --filter @inkweaver/server typecheck` 与 SQL EXPLAIN；预期 fuzzy 通道返回非零 matchedTermCount
+- **验证**：Server build、typecheck 与搜索 SQL 契约测试通过；仍需在生产 Server 恢复后通过真实搜索请求确认 fuzzy 通道返回非零 `matchedTermCount`。
 - **深度笔记**：[docs/notes/笔记-08-PostgreSQL-数组与-jsonb-操作符语义边界.md](file:///d:/Codex_Workspaces/software-development/projects/SyncBox-AI/docs/notes/笔记-08-PostgreSQL-数组与-jsonb-操作符语义边界.md)（含 `@>`/`?|`/`&&` 三操作符语义对照与跨域转换）
 - **教训**：
   - `tsvector_to_array` 严格期望 tsvector 入参，不能用 tsquery 替代，混淆 pg 全文检索两类核心类型会导致静默错误
@@ -777,7 +777,7 @@
   - `@>` 同时存在于 array 和 jsonb 域，但右操作数类型必须匹配左操作数所在域
   - `&&` 仅存在于 array 域，对 jsonb **不存在该操作符**
   - 实体声明 jsonb 但 SQL 写成数组操作符，类型不匹配
-- **修复**（待落地）：保留 jsonb 列类型，改用 jsonb 原生操作符，参数列表不变：
+- **修复**（已落地）：保留 jsonb 列类型，改用 jsonb 原生操作符，参数列表不变：
   - `tags @> $3::varchar[]` → `tags @> to_jsonb($3::varchar[])`（`@>` 语义不变，仅把右操作数转成 jsonb 数组）
   - `tags && $5::varchar[]` → `tags ?| $5::varchar[]`（`?|` 是 jsonb 的"任一 key 存在"操作符，语义等价于数组 `&&`）
   
@@ -786,7 +786,7 @@
   - `?|` = "任一存在"（OR 语义，related 通道用）
   
   互换会导致 exact 通道过度召回（"全部包含"降级为"任一存在"）。
-- **验证**：待代码落地后跑 `pnpm --filter @inkweaver/server typecheck`；预期三处 SQL 不再被 .catch 吞掉，exact/related 两路在融合阶段实际贡献分数
+- **验证**：Server build、typecheck 与搜索 SQL 契约测试通过；仍需在生产 Server 恢复后通过真实搜索请求确认 exact/related 两路实际贡献分数。
 - **性能注意**：`@>` 和 `?|` 走索引需要 GIN 索引：
   ```sql
   CREATE INDEX IF NOT EXISTS idx_documents_tags_gin ON documents USING GIN (tags);
@@ -797,3 +797,27 @@
   - TypeORM entity 的列类型定义与 SQL 操作符必须严格对齐：声明 jsonb 就只能用 jsonb 域操作符（`@>` `?` `?|` `?&`），声明 array 才能用 `@>` `&&` `<@`
   - `@>` 跨域同名但语义不同：array 的 `@>` 是"包含所有元素"，jsonb 的 `@>` 是"JSON 结构包含"，右操作数类型决定走哪个域
   - `.catch(() => [])` 是双刃剑：单路失败降级保融合可用，但也会吞掉 SQL 类型错误这类"应该可见"的故障；建议至少配对 logger.warn
+
+---
+
+## #43 HNSW migration 使用错误的 pgvector 索引参数名
+
+- **日期**：2026-09-03
+- **模块**：`apps/server/src/migrations/1756000000000-SearchInfraUpgrade.ts`
+- **现象**：生产容器启动时 migration 报 `SQLSTATE 22023: unrecognized parameter "efconstruction"`，入口脚本退出后容器持续重启。
+- **根因**：HNSW 索引 SQL 使用驼峰形式 `efConstruction`。PostgreSQL 将未加引号的标识符折叠为 `efconstruction`，但 pgvector 注册的 reloption 是 `ef_construction`。
+- **修复**：改为 `WITH (m = 16, ef_construction = 128)`；迁移契约测试增加正确拼写与禁止驼峰拼写的双向断言；架构和向量数据库文档同步使用真实 SQL 参数名。
+- **验证**：Server build、typecheck 通过；Server 单元测试 52 passed、1 skipped；生产后续启动日志显示 `Applied 0 migration(s)`，说明该实例已无待执行 migration。
+- **教训**：迁移 SQL 的 mock/字符串存在性测试不足以证明数据库方言合法；关键扩展参数至少应精确断言，发布前还需在隔离 PostgreSQL + pgvector 实例执行正向与回滚演练。
+
+---
+
+## #44 SyncModule / DocumentsModule 双重循环依赖导致生产启动失败
+
+- **日期**：2026-09-03
+- **模块**：`apps/server/src/modules/sync`、`apps/server/src/modules/documents`
+- **现象**：migration 成功后 Nest 报 `UndefinedModuleException`，指出 `SyncModule imports[3]` 为 `undefined`，容器持续重启。
+- **根因**：`DocumentsModule` 已通过 `forwardRef` 导入 `SyncModule`，反向的 `SyncModule -> DocumentsModule` 仍是直接引用；同时 `DocumentsService <-> SyncGateway` 的 Provider 循环也只有一端使用 `forwardRef`。单元测试直接实例化 Service，没有按 `AppModule` 的生产顺序扫描模块树，因此未发现问题。
+- **修复**：`SyncModule` 使用 `forwardRef(() => DocumentsModule)`；`SyncGateway` 使用 `@Inject(forwardRef(() => DocumentsService))`；新增按 `AppModule` 加载顺序验证模块和 Provider 元数据的回归测试。
+- **验证**：复现修复前 `SyncModule imports[3].isUndefined=true`；修复后新增回归测试通过，Server build、typecheck 通过，Server 单元测试 52 passed、1 skipped。本项仍需部署后以 `/readyz` 和容器日志完成生产验证。
+- **教训**：Nest 循环依赖必须同时处理模块层和 Provider 层两端；仅运行 TypeScript build 或手工 new Service 的单测无法替代模块树启动测试。
