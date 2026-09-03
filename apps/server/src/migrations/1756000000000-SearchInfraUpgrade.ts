@@ -16,7 +16,7 @@ export class SearchInfraUpgrade1756000000000 implements MigrationInterface {
     await queryRunner.query(`
       CREATE INDEX IF NOT EXISTS "IDX_document_chunks_embedding_hnsw"
         ON document_chunks USING hnsw (embedding vector_cosine_ops)
-        WITH (m = 16, efConstruction = 128)
+        WITH (m = 16, ef_construction = 128)
     `);
 
     // 2) documents 全文检索列 + GIN 索引（通道②地基）
