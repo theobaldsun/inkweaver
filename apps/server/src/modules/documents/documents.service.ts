@@ -89,7 +89,7 @@ export class DocumentsService {
    * 1. 若指定 folderId，校验归属（防止越权挂载）
    * 2. 保存文档行（此时尚无 sync 基线）
    * 3. 写入初始 Yjs 快照 + SyncUpdate（try/catch，失败则回滚文档行）
-   * 4. 调度存储用量重算
+   * 4. 调度向量索引与存储用量重算
    */
   async createDocument(userId: string, createDocumentDto: CreateDocumentDto): Promise<Document> {
     if (createDocumentDto.folderId) {
@@ -118,6 +118,12 @@ export class DocumentsService {
       await this.documentsRepository.delete(savedDocument.id);
       throw new InternalServerErrorException('文档初始化失败，请重试');
     }
+    await this.scheduleDocumentReindex(
+      savedDocument.id,
+      savedDocument.userId,
+      savedDocument.title,
+      savedDocument.content,
+    );
     this.storageUsageService.scheduleRecalculate(userId);
     return savedDocument;
   }
@@ -307,12 +313,7 @@ export class DocumentsService {
         this.storageUsageService.scheduleRecalculate(saved.userId);
       }
     }
-    await this.documentIndexService.scheduleReindex({
-      docId,
-      userId: document.userId,
-      title,
-      content,
-    });
+    await this.scheduleDocumentReindex(docId, document.userId, title, content);
   }
 
   /**
@@ -325,6 +326,9 @@ export class DocumentsService {
     // 内部加载（不走 lastOpenedAt 副作用，避免污染搜索关联召回）
     const document = await this.loadDocument(docId, userId);
     const previousBytes = this.storageUsageService.calculateDocumentBytes(document.title, document.content);
+    const searchableContentChanged =
+      updateDocumentDto.title !== undefined ||
+      updateDocumentDto.content !== undefined;
     if (updateDocumentDto.title !== undefined) document.title = updateDocumentDto.title;
     if (updateDocumentDto.content !== undefined) document.content = updateDocumentDto.content;
     if (updateDocumentDto.isPublic !== undefined) document.isPublic = updateDocumentDto.isPublic;
@@ -337,8 +341,14 @@ export class DocumentsService {
     }
     const saved = await this.documentsRepository.save(document);
     // 仅当标题或正文变更时才同步 docTsv，避免无变更时的无谓 UPDATE
-    if (updateDocumentDto.title !== undefined || updateDocumentDto.content !== undefined) {
+    if (searchableContentChanged) {
       await this.updateDocTsv(saved.id, saved.title, saved.content);
+      await this.scheduleDocumentReindex(
+        saved.id,
+        saved.userId,
+        saved.title,
+        saved.content,
+      );
     }
     const nextBytes = this.storageUsageService.calculateDocumentBytes(saved.title, saved.content);
     if (nextBytes !== previousBytes) {
@@ -497,7 +507,14 @@ export class DocumentsService {
     document.deletedAt = null;
     document.deletedFromFolderId = null;
     document.folderId = restoredFolderId;
-    return this.documentsRepository.save(document);
+    const restored = await this.documentsRepository.save(document);
+    await this.scheduleDocumentReindex(
+      restored.id,
+      restored.userId,
+      restored.title,
+      restored.content,
+    );
+    return restored;
   }
 
   /**
@@ -634,6 +651,26 @@ export class DocumentsService {
        WHERE id = $1`,
       [docId, title, content],
     );
+  }
+
+  /**
+   * 以非阻断方式提交文档向量重建。
+   *
+   * AI 索引属于可恢复的派生数据；队列暂不可用时由调度服务记录错误，不能让已经
+   * 持久化成功的文档创建、更新或恢复请求失败。
+   */
+  private async scheduleDocumentReindex(
+    docId: string,
+    userId: string,
+    title: string,
+    content: string,
+  ): Promise<void> {
+    await this.documentIndexService.scheduleReindex({
+      docId,
+      userId,
+      title,
+      content,
+    });
   }
 
   /**

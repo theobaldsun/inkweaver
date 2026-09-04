@@ -17,7 +17,7 @@
  * - 加权求和 + recencyBonus（最近 7 天更新 +5 分上限）
  * - 权重当前 hardcode，T4 后迁配置表
  */
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 
@@ -100,6 +100,9 @@ const WEIGHTS = { exact: 1.0, fuzzy: 0.8, related: 0.5, semantic: 0.9, recency: 
 
 @Injectable()
 export class SearchService {
+  /** 记录单路召回降级，避免 SQL 或外部服务错误被静默吞掉。 */
+  private readonly logger = new Logger(SearchService.name);
+
   constructor(
     @InjectRepository(SearchHistory)
     private searchHistoryRepository: Repository<SearchHistory>,
@@ -316,12 +319,20 @@ export class SearchService {
     const useRelated = mode === 'smart';
     const useSemantic = mode !== 'keyword';
 
-    // 2. 四路并行，每路 catch 降级
+    // 2. 四路并行；单路异常会记录通道名称并降级为空，不拖垮其余结果。
     const [exact, fuzzy, related, semantic] = await Promise.all([
-      useExact ? this.searchExact(userId, keyword, tokens).catch(() => []) : Promise.resolve([]),
-      useFuzzy ? this.searchFuzzy(userId, keyword).catch(() => []) : Promise.resolve([]),
-      useRelated ? this.searchRelated(userId, entities).catch(() => []) : Promise.resolve([]),
-      useSemantic ? this.searchSemantic(userId, keyword).catch(() => []) : Promise.resolve([]),
+      useExact
+        ? this.runChannel('exact', () => this.searchExact(userId, keyword, tokens))
+        : Promise.resolve([]),
+      useFuzzy
+        ? this.runChannel('fuzzy', () => this.searchFuzzy(userId, keyword))
+        : Promise.resolve([]),
+      useRelated
+        ? this.runChannel('related', () => this.searchRelated(userId, entities))
+        : Promise.resolve([]),
+      useSemantic
+        ? this.runChannel('semantic', () => this.searchSemantic(userId, keyword))
+        : Promise.resolve([]),
     ]);
 
     // 3. Map<docId, MergedDocScore> 合并
@@ -429,5 +440,26 @@ export class SearchService {
       }
       return d;
     });
+  }
+
+  /**
+   * 执行单个召回通道并提供可观测降级。
+   *
+   * @param channel 通道名称
+   * @param operation 通道查询函数
+   */
+  private async runChannel<T>(
+    channel: Channel,
+    operation: () => Promise<T[]>,
+  ): Promise<T[]> {
+    try {
+      return await operation();
+    } catch (error) {
+      this.logger.warn(
+        `混合检索 ${channel} 通道失败`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      return [];
+    }
   }
 }

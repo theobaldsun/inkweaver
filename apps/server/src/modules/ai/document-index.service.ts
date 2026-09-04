@@ -12,20 +12,21 @@
  * 关键策略：
  * - 固定 jobId 去重：同一 docId 的索引用 `reindex-${docId}` 合并，只保留最新内容
  * - active 冲突延迟处理：当索引正在执行时，新请求以 30s 延迟任务入队，避免丢失
- * - 软删除兜底：延迟任务再次被编辑时会被替换，防止多次编辑堆积延迟任务
+ * - 终态任务重建：completed / failed 任务必须先删除，BullMQ 才允许复用固定 jobId
  *
  * 依赖：
  * - BullMQ Queue（ai-document-index 队列）：异步索引任务调度
  * - VectorStore（pgvector）：向量数据持久化
  */
 
-import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Queue } from 'bullmq';
 
 import { AI_INDEX_QUEUE, type AiIndexJobPayload } from './ai.constants';
-import type { VectorStore } from './vector/vector-store';
 import { VECTOR_STORE } from './vector/vector-store.token';
+
+import type { VectorStore } from './vector/vector-store';
 
 @Injectable()
 export class DocumentIndexService {
@@ -45,13 +46,11 @@ export class DocumentIndexService {
    *
    * 三阶段处理策略：
    * 1. **清理阶段**：查找已有任务，根据状态决定是否移除
-   *    - waiting / delayed / prioritized → 移除后以最新 payload 重入队
-   *    - active → 不移除（正在执行，无法安全终止）
-   *    - completed / failed → 不移除（已结束，直接 add 会重建）
+   *    - active → 不移除，改为提交独立的延迟任务
+   *    - 其他状态（含 completed / failed）→ 移除后以最新 payload 重入队
    * 2. **入队阶段**：以固定 jobId `reindex-${docId}` 入队
    *    - 同一 docId 只会有一个主任务，天然去重
-   * 3. **冲突兜底**：若 add 因 active 任务冲突抛错（BullMQ `Job already exist`），
-   *    改为调用 enqueueDelayedReindex 延迟 30s 入队
+   * 3. **异常隔离**：队列暂不可用时记录日志并返回 false，不阻断文档主流程
    *
    * 延迟重入队的必要性：
    * active 任务正在执行切块→嵌入→写入 pgvector，无法中断。
@@ -60,23 +59,20 @@ export class DocumentIndexService {
    *
    * @param payload 文档索引载荷（含 docId、userId、title、content 全量快照）
    */
-  async scheduleReindex(payload: AiIndexJobPayload): Promise<void> {
+  async scheduleReindex(payload: AiIndexJobPayload): Promise<boolean> {
     const jobId = `reindex-${payload.docId}`;
+    try {
+      const existing = await this.indexQueue.getJob(jobId);
+      if (existing) {
+        const state = await existing.getState();
+        if (state === 'active') {
+          return this.enqueueDelayedReindex(payload);
+        }
 
-    // 第一步：清理非活跃状态的旧任务
-    const existing = await this.indexQueue.getJob(jobId);
-    if (existing) {
-      const state = await existing.getState();
-      if (state === 'waiting' || state === 'delayed' || state === 'prioritized') {
+        // BullMQ 在任务记录仍存在时不会重新创建相同 jobId；终态任务同样必须先删。
         await existing.remove();
       }
-      // active / completed / failed 状态的任务不移除
-      // - active：正在执行，强行移除可能导致向量库不一致
-      // - completed/failed：已结束，直接 add 会以相同 jobId 重建
-    }
 
-    // 第二步：尝试以固定 jobId 入队
-    try {
       await this.indexQueue.add('reindex', payload, {
         jobId,
         removeOnComplete: 100,
@@ -84,13 +80,10 @@ export class DocumentIndexService {
         attempts: 3,
         backoff: { type: 'exponential', delay: 2000 },
       });
+      return true;
     } catch (error) {
-      // 第三步：如果因 active 任务导致冲突，走延迟重入队
-      if (error instanceof Error && error.message.includes('Job already exist')) {
-        await this.enqueueDelayedReindex(payload);
-      } else {
-        this.logger.warn(`入队索引失败 docId=${payload.docId}`, error);
-      }
+      this.logger.warn(`入队索引失败 docId=${payload.docId}`, error);
+      return false;
     }
   }
 
@@ -113,7 +106,7 @@ export class DocumentIndexService {
    *
    * @param payload 文档索引载荷
    */
-  private async enqueueDelayedReindex(payload: AiIndexJobPayload): Promise<void> {
+  private async enqueueDelayedReindex(payload: AiIndexJobPayload): Promise<boolean> {
     const delayedJobId = `reindex-${payload.docId}-delayed`;
     try {
       const oldDelayed = await this.indexQueue.getJob(delayedJobId);
@@ -131,8 +124,10 @@ export class DocumentIndexService {
       this.logger.log(
         `文档索引延迟入队 docId=${payload.docId}，将在 30s 后执行以覆盖 active 任务`,
       );
+      return true;
     } catch (delayedError) {
       this.logger.warn(`延迟索引入队失败 docId=${payload.docId}`, delayedError);
+      return false;
     }
   }
 
@@ -149,7 +144,12 @@ export class DocumentIndexService {
    */
   async deleteByDocId(docId: string): Promise<void> {
     try {
-      await this.indexQueue.remove(`reindex-${docId}`).catch(() => undefined);
+      await Promise.all([
+        this.indexQueue.remove(`reindex-${docId}`).catch(() => undefined),
+        this.indexQueue
+          .remove(`reindex-${docId}-delayed`)
+          .catch(() => undefined),
+      ]);
       await this.vectorStore.deleteByDocId(docId);
     } catch (error) {
       this.logger.warn(`删除文档向量失败 docId=${docId}`, error);

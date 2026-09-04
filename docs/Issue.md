@@ -860,3 +860,40 @@
 - **本地验证**：Server build 与 typecheck 通过；Server 单元测试 52 passed、1 skipped；三处修改文件的定向 ESLint 通过。
 - **验证标准**：Server 单元测试、typecheck、build 通过；生产重新构建的镜像包含两处新增 `forwardRef`；容器日志不再出现 `UndefinedDependencyException` 或 `UndefinedModuleException`；`/readyz` 返回成功。
 - **教训**：循环依赖排查不能只看报错中的一对类。Provider 图中任意长度的闭环都可能受模块求值顺序影响；回归测试应覆盖完整闭环的每条注入边，而不能只断言首次暴露的边。
+
+---
+
+## #47 生产 Nest 容器无法访问 FRP embedding 且 AI Chat 配置未注入
+
+- **日期**：2026-09-04
+- **模块**：`apps/server/src/modules/ai`、`docker-compose.prod.yml`、ECS UFW / FRP
+- **现象**：公网 `GET /api/ai/ping` 能进入 Nest，但返回 `chatConfigured=false`、`embedHealthy=false`；Server 日志记录 embedding `fetch failed`。ECS 宿主机访问 `127.0.0.1:18090/health` 能立即返回，Nest 容器访问 `http://host.docker.internal:18090/health` 却连接超时。
+- **根因**：
+  1. `apps/server/.env` 只用于本地开发，且 `.dockerignore` 排除了 `.env*`；生产 Compose 实际从仓库根目录 `.env.prod` 注入环境变量，当时该文件缺少 `AI_CHAT_BASE_URL`、`AI_CHAT_API_KEY`、`AI_CHAT_MODEL`
+  2. FRPS 已在 ECS `*:18090` 监听，但 UFW 默认拒绝入站，未允许 Compose 网络 `172.18.0.0/16` 经对应 bridge 访问宿主机 `18090`
+  3. 前端 `aiApi.ping()` 中的 `/ai/ping` 会与 Web 的 `baseURL=/api` 合并为 `/api/ai/ping`；该相对路径不是故障
+- **修复**：
+  - 将本地已有的三个 `AI_CHAT_*` 配置安全同步到 `/opt/inkweaver/repo/.env.prod`，不使用本地 `AI_EMBED_BASE_URL` 覆盖 ECS 的 FRP 地址
+  - 仅允许当前 Compose bridge 和 `172.18.0.0/16` 访问宿主机 TCP `18090`，不对公网开放该端口
+  - 使用 `docker compose ... up -d --no-build --force-recreate server` 重新创建 Server 容器，使更新后的环境变量生效
+- **验证**：Server 本地 build、typecheck 通过，单元测试 52 passed、1 skipped；构建产物路由元数据为 `GET /api/ai/ping`，直接执行 `ping()` 返回完整状态结构；生产容器带 Bearer Token 请求 embedding `/health` 返回 HTTP 200、模型 `BAAI/bge-small-zh-v1.5`、维度 512；公网 `/api/ai/ping` 返回 `ok=true`、`chatConfigured=true`、`embedConfigured=true`、`embedHealthy=true`；Server 容器持续运行且启动日志正常。
+- **剩余验证**：`/api/search/hybrid` 强制使用 `AuthGuard`，匿名探测返回 401 属于预期行为；真实混合检索结果仍需使用有效登录 Token 验证。
+- **教训**：判断生产 AI 故障时要分别验证路由、配置注入、宿主机到 FRP、容器到宿主机四层链路；宿主机能访问 FRP 不能证明 Docker bridge 已被 UFW 放行。
+
+---
+
+## #48 文档索引生命周期缺口导致 AI 问答与 smart 搜索持续无结果
+
+- **日期**：2026-09-04
+- **模块**：`DocumentsService`、`DocumentIndexService`、`SearchService`、BullMQ `ai-document-index`
+- **现象**：embedding `/health` 与 `/embed` 已返回 HTTP 200，公网 `/api/ai/ping` 也为 `ok=true`，但 AI 问答固定返回“当前笔记库中没有找到与问题相关的内容”，近期 smart 搜索均返回空结果。
+- **证据**：生产库 5 篇有效文档均有正文和非空 `docTsv`，但 `document_chunks` 为 0；文档 4 的索引任务在 UFW 修复前重试 3 次后停留在 failed，文档 5 在网络恢复后创建却从未进入队列。exact/fuzzy SQL 使用文档自身标题或词元验证时 5/5 可命中，排除全文列和 SQL 类型错误。
+- **根因**：
+  1. `createDocument`、REST `updateDocument`、`restoreDocument` 未调用 `scheduleReindex`，只有 Yjs 投影路径会调度索引
+  2. BullMQ 固定 `jobId` 的 completed/failed 任务仍占用 ID，原实现不删除终态记录，重新提交不会真正创建新任务
+  3. embedding 恢复后没有可重复执行的全量回填入口，历史失败和功能上线前文档不会自动补齐
+  4. hybrid 四路查询用 `.catch(() => [])` 静默降级，通道故障缺少日志
+- **修复**：补齐创建、正文/标题更新、恢复后的索引调度；终态任务先删除再复用固定 `jobId`，active 任务继续走延迟重建；增加幂等生产回填脚本；为 exact/fuzzy/related/semantic 各通道补充降级日志。
+- **本地验证**：Server typecheck、build 通过；单元测试 58 passed、1 skipped；本次涉及的 6 个 TypeScript 文件定向 ESLint 通过。全量 Server lint 仍有 259 个既有错误，与本次改动无关。
+- **生产验证标准**：回填输出 `failed=0`；5 篇有效文档均生成 `document_chunks`；failed 队列归零或仅保留可解释历史项；公网 `/api/ai/ping` 保持 `ok=true`；使用有效登录 Token 验证 AI 引用和 semantic/smart 搜索结果。
+- **教训**：`POST /embed 200` 只能证明某次文本向量化成功，不能证明请求来自文档索引，更不能证明向量已写入 `document_chunks`；必须同时核对队列终态与数据库落库结果。
