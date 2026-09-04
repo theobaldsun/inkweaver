@@ -895,5 +895,18 @@
   4. hybrid 四路查询用 `.catch(() => [])` 静默降级，通道故障缺少日志
 - **修复**：补齐创建、正文/标题更新、恢复后的索引调度；终态任务先删除再复用固定 `jobId`，active 任务继续走延迟重建；增加幂等生产回填脚本；为 exact/fuzzy/related/semantic 各通道补充降级日志。
 - **本地验证**：Server typecheck、build 通过；单元测试 58 passed、1 skipped；本次涉及的 6 个 TypeScript 文件定向 ESLint 通过。全量 Server lint 仍有 259 个既有错误，与本次改动无关。
-- **生产验证标准**：回填输出 `failed=0`；5 篇有效文档均生成 `document_chunks`；failed 队列归零或仅保留可解释历史项；公网 `/api/ai/ping` 保持 `ok=true`；使用有效登录 Token 验证 AI 引用和 semantic/smart 搜索结果。
+- **生产验证**：回填输出 `queued=5 failed=0`；生产库 5 篇有效文档均已生成分块（`chunks=5`、`indexed_docs=5`）；BullMQ 为 `wait=0 active=0 delayed=0 completed=5 failed=0`；公网 `/api/ai/ping` 返回 HTTP 200 且四项状态全为 `true`。服务器内部使用真实分块但不输出正文进行验证，向量检索命中源文档，smart 搜索返回 4 条并包含源文档，命中 `fuzzy`、`semantic` 通道；使用合成上下文验证 Chat 生成成功且返回 1 条引用，未向 Chat 供应商发送真实笔记。匿名 `/api/search/hybrid` 返回 401，符合 `AuthGuard` 预期。
 - **教训**：`POST /embed 200` 只能证明某次文本向量化成功，不能证明请求来自文档索引，更不能证明向量已写入 `document_chunks`；必须同时核对队列终态与数据库落库结果。
+
+---
+
+## #49 低内存 ECS 无缓存构建导致整机服务失去响应
+
+- **日期**：2026-09-04
+- **模块**：生产部署流程、Docker BuildKit、Shadowsocks、FRP
+- **现象**：在约 1.6GB 内存的 ECS 上、业务容器仍全部运行时执行 Server `build --no-cache`；依赖安装完成并进入 `nest build` 后，SSH 端口可建立 TCP 连接但不返回 banner，HTTPS 同样建连后无响应，Shadowsocks 不可用，只能通过云控制台重启实例恢复。
+- **证据边界**：重启后上一启动周期没有可读取的 OOM kernel 记录，因此不能把 OOM 作为已证实根因；但故障与无缓存构建时间重合，症状符合内存、CPU 或 I/O 资源耗尽。构建未产出新镜像，重启后运行镜像仍缺少本次回填脚本和索引修复。
+- **恢复**：实例重启后，Shadowsocks、PostgreSQL、Redis、MinIO、Server 依靠 restart policy 自动恢复；重启本机 `frpc` 后，FRPS 恢复 `18090` 映射，`/api/ai/ping` 再次全绿。
+- **安全部署**：改为在开发机执行 Nest build，上传经过 SHA-256 校验的完整 `dist`；ECS 以旧镜像为只读基线生成轻量覆盖镜像，保留 `repo-server:rollback-pre-ab52f6f`，再使用 `--no-build --force-recreate server` 替换。该方式未在 ECS 安装依赖或编译 TypeScript。
+- **验证**：新镜像包含 `dist/scripts/backfill-document-index.js` 和索引生命周期修复；`/readyz`、公网 Web、`/api/ai/ping` 均返回 HTTP 200；所有核心容器保持运行，部署后可用内存约 890MB、Swap 未使用。
+- **教训**：低内存生产机不能把 `--no-cache` 当成解决陈旧镜像的默认手段。Server 镜像应在开发机或 CI 构建后传入生产；部署前检查资源，替换时使用 `--no-build`，并保留可立即恢复的旧镜像。
