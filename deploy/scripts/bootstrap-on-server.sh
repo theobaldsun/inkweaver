@@ -1,5 +1,5 @@
 #!/bin/bash
-# 在服务器上以 root 执行（Workbench 或 ssh -i SSH1.pem root@IP）
+# 在服务器上以 root 执行（Workbench 或 ssh -i /path/to/server.pem root@IP）
 # 注意：与 provision-inkweaver-cn.sh 功能重叠，新环境优先使用 provision-inkweaver-cn.sh
 set -euo pipefail
 

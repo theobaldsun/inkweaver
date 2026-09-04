@@ -198,7 +198,7 @@
   4. 网关冲突检测保持原有 WebSocket 协议：冲突时返回 `{ conflict: true, serverUpdateId }`，在事务外通过 `client.emit('conflict', ...)` 通知客户端
   5. 广播和副作用（`scheduleRecalculateByDocId` 等）放在事务外执行，避免长事务
 - **验证**：`pnpm --filter @inkweaver/server typecheck` 通过；单元测试 mock DataSource 事务逻辑
-- **深度笔记**：[docs/技术笔记.md#笔记-2：TOCTOU-竞态与数据库锁机制](file:///d:/Codex_Workspaces/software-development/projects/SyncBox-AI/docs/技术笔记.md#L227-L484) 包含问题本质、时序图、方案对比、代码实现、性能分析
+- **深度笔记**：[笔记-02：TOCTOU 竞态与数据库锁机制](./notes/笔记-02-TOCTOU-竞态与数据库锁机制.md) 包含问题本质、时序图、方案对比、代码实现、性能分析
 - **教训**：
   1. 涉及"读-判-写"模式的业务逻辑必须用事务 + 悲观锁保护，特别是协作编辑场景下的高频并发更新
   2. 副作用（广播、缓存更新）应在事务提交后执行，避免长事务阻塞
@@ -459,7 +459,7 @@
   3. 使用 `visited` Set 双重防环（出队时检查 + 入队时检查）
   4. 两阶段设计：收集阶段（纯读 BFS）→ 执行阶段（逆序删除，子先父后）
 - **验证**：`pnpm --filter @inkweaver/server typecheck` 通过
-- **深度笔记**：[docs/技术笔记.md#笔记-5：深嵌套树遍历——迭代-预检查上限模式](file:///d:/Codex_Workspaces/software-development/projects/SyncBox-AI/docs/技术笔记.md#L735)
+- **深度笔记**：[笔记-05：深嵌套树遍历——迭代与预检查上限](./notes/笔记-05-深嵌套树遍历-迭代与预检查上限.md)
 - **教训**：
   - 递归的核心风险不在"慢"，而在"栈溢出"——迭代的优势是可控性
   - "先读后写、先检查后执行"的两阶段设计保证操作原子性
@@ -503,7 +503,7 @@
   3. `validateRefreshToken` 先用 SHA-256 哈希命中索引行（O(1)），再对候选行做单次 `bcrypt.compare`
   4. 历史数据（lookup 为空）回退全量扫描，首次命中后自动回填
 - **验证**：`pnpm --filter @inkweaver/server typecheck` 通过
-- **深度笔记**：[docs/技术笔记.md#笔记-4：Token-双重哈希验证模式](file:///d:/Codex_Workspaces/software-development/projects/SyncBox-AI/docs/技术笔记.md#L651)
+- **深度笔记**：[笔记-04：Token 双重哈希验证模式](./notes/笔记-04-Token-双重哈希验证模式.md)
 - **教训**：
   - 「快筛（SHA-256）+ 慢验（bcrypt）」的双重哈希模式将 O(N) 次 bcrypt 降为 1 次
   - 快筛用确定性哈希（相同输入 = 相同输出）做索引定位，慢验用加盐哈希做安全校验
@@ -755,8 +755,8 @@
       )
     ) AS "matchedTermCount"
     ```
-- **验证**：Server build、typecheck 与搜索 SQL 契约测试通过；仍需在生产 Server 恢复后通过真实搜索请求确认 fuzzy 通道返回非零 `matchedTermCount`。
-- **深度笔记**：[docs/notes/笔记-08-PostgreSQL-数组与-jsonb-操作符语义边界.md](file:///d:/Codex_Workspaces/software-development/projects/SyncBox-AI/docs/notes/笔记-08-PostgreSQL-数组与-jsonb-操作符语义边界.md)（含 `@>`/`?|`/`&&` 三操作符语义对照与跨域转换）
+- **验证**：Server build、typecheck 与搜索 SQL 契约测试通过；生产索引回填后，smart 搜索返回结果并命中 fuzzy/semantic 通道。精确的 `matchedTermCount` 分布仍应在新增搜索回归时持续观察。
+- **深度笔记**：[笔记-08](./notes/笔记-08-PostgreSQL-数组与-jsonb-操作符语义边界.md)（含 `@>`/`?|`/`&&` 三操作符语义对照与跨域转换）
 - **教训**：
   - `tsvector_to_array` 严格期望 tsvector 入参，不能用 tsquery 替代，混淆 pg 全文检索两类核心类型会导致静默错误
   - `&&` 对数组返回 boolean（Overlap），不是返回交集数组；判断"有交集"用 `&&`，要算"交集有几个"必须走 `unnest + INTERSECT`
@@ -768,7 +768,7 @@
 
 - **日期**：2026-08-31
 - **模块**：`apps/server/src/modules/search/search.service.ts` 的 `searchExact` 和 `searchRelated`
-- **现象**：`documents.tags` 列定义为 `jsonb`（[document.entity.ts#L32-L33](file:///d:/Codex_Workspaces/software-development/projects/SyncBox-AI/apps/server/src/modules/documents/entity/document.entity.ts#L32-L33)），但 SQL 使用了数组专属操作符：
+- **现象**：`documents.tags` 列定义为 `jsonb`（[document.entity.ts](../apps/server/src/modules/documents/entity/document.entity.ts)），但 SQL 使用了数组专属操作符：
   - `searchExact`：`tags @> $3::varchar[]`（CASE 与 WHERE 各一处）
   - `searchRelated`：`tags && $5::varchar[]`
   
@@ -792,7 +792,7 @@
   CREATE INDEX IF NOT EXISTS idx_documents_tags_gin ON documents USING GIN (tags);
   ```
   现有 migrations 若未建该索引，建议补一条迁移脚本
-- **深度笔记**：同 #41，[笔记-08](file:///d:/Codex_Workspaces/software-development/projects/SyncBox-AI/docs/notes/笔记-08-PostgreSQL-数组与-jsonb-操作符语义边界.md)
+- **深度笔记**：同 #41，[笔记-08](./notes/笔记-08-PostgreSQL-数组与-jsonb-操作符语义边界.md)
 - **教训**：
   - TypeORM entity 的列类型定义与 SQL 操作符必须严格对齐：声明 jsonb 就只能用 jsonb 域操作符（`@>` `?` `?|` `?&`），声明 array 才能用 `@>` `&&` `<@`
   - `@>` 跨域同名但语义不同：array 的 `@>` 是"包含所有元素"，jsonb 的 `@>` 是"JSON 结构包含"，右操作数类型决定走哪个域
@@ -819,7 +819,7 @@
 - **现象**：migration 成功后 Nest 报 `UndefinedModuleException`，指出 `SyncModule imports[3]` 为 `undefined`，容器持续重启。
 - **根因**：`DocumentsModule` 已通过 `forwardRef` 导入 `SyncModule`，反向的 `SyncModule -> DocumentsModule` 仍是直接引用；同时 `DocumentsService <-> SyncGateway` 的 Provider 循环也只有一端使用 `forwardRef`。单元测试直接实例化 Service，没有按 `AppModule` 的生产顺序扫描模块树，因此未发现问题。
 - **修复**：`SyncModule` 使用 `forwardRef(() => DocumentsModule)`；`SyncGateway` 使用 `@Inject(forwardRef(() => DocumentsService))`；新增按 `AppModule` 加载顺序验证模块和 Provider 元数据的回归测试。
-- **验证**：复现修复前 `SyncModule imports[3].isUndefined=true`；修复后新增回归测试通过，Server build、typecheck 通过，Server 单元测试 52 passed、1 skipped。本项仍需部署后以 `/readyz` 和容器日志完成生产验证。
+- **验证**：复现修复前 `SyncModule imports[3].isUndefined=true`；修复后新增回归测试、Server build、typecheck 通过。最终生产镜像包含完整 `forwardRef` 修复，容器日志不再出现 `UndefinedModuleException`，`/readyz` 返回 HTTP 200。本项已完成生产验证。
 - **教训**：Nest 循环依赖必须同时处理模块层和 Provider 层两端；仅运行 TypeScript build 或手工 new Service 的单测无法替代模块树启动测试。
 
 ---
@@ -831,22 +831,10 @@
 - **现象**：源码中的 `SyncModule -> DocumentsModule` 已增加 `forwardRef`，但执行 `docker compose up -d --build` 后，`repo-server` 镜像内的 `/app/dist/modules/sync/sync.module.js` 仍是上一次构建产物，生产容器继续出现 #44 的 `UndefinedModuleException`。
 - **证据**：ECS 上源码 `apps/server/src/modules/sync/sync.module.ts` 的修改时间为 `2026-09-03 19:36:24 +0800`；镜像内 `sync.module.js` 的构建时间为 `2026-09-03 09:40:06 +0000`（即 `17:40:06 +0800`），早于源码修改时间；在镜像内执行 `grep 'forwardRef' /app/dist/modules/sync/sync.module.js` 返回 `NO forwardRef FOUND`。
 - **根因**：本次 `docker compose up -d --build` 没有生成包含最新 Server 源码的镜像，构建过程复用了旧缓存层，导致旧 `dist` 被继续打包和启动。当前证据确认的是“镜像产物陈旧”；若禁用缓存后仍复现，还需继续检查 Compose 的 `build.context`、`.dockerignore`、Dockerfile 的 `COPY` 路径以及实际启动的镜像标签。
-- **处置**（待生产验证）：先停止 Server 的重启循环，再对 Server 镜像执行无缓存构建：
-  ```bash
-  docker compose \
-    -p repo \
-    -f docker-compose.prod.yml \
-    --env-file .env.prod \
-    build --no-cache server
-
-  docker compose \
-    -p repo \
-    -f docker-compose.prod.yml \
-    --env-file .env.prod \
-    up -d --force-recreate server
-  ```
-- **验证标准**：新镜像内 `sync.module.js` 能检索到 `forwardRef`；容器日志不再出现 `UndefinedModuleException`；`curl -fsS http://127.0.0.1:3000/readyz` 成功。三项全部满足后，才能把 #44 和本项标记为生产验证完成。
-- **教训**：`--build` 只表示构建缺失或判定为变化的层，不等于禁用 Docker layer cache。生产热修复部署后必须核对镜像内关键产物，不能只根据源码、构建命令退出码或容器创建成功判断新代码已生效。
+- **失败过的处置**：曾尝试在约 1.6GB ECS 上执行 Server `build --no-cache`，引发 #49 的整机失去响应。该命令不再是当前服务器的可接受方案。
+- **最终处置**：在开发机生成完整 Server dist，上传并校验 SHA-256；ECS 以当前镜像为只读基线生成只覆盖 `/app/dist` 的候选镜像，然后使用 `up -d --no-build --force-recreate server` 替换。该方式没有在 ECS 安装依赖或编译 TypeScript。
+- **生产验证**：新镜像内存在 `forwardRef` 和后续索引修复产物；容器日志不再出现 `UndefinedModuleException`；`/readyz` 返回 HTTP 200。本项已完成生产验证。
+- **教训**：`--build` 只表示构建需要的镜像，不等于禁用 Docker layer cache；`--no-cache` 在低内存生产机又可能耗尽整机资源。发布后必须核对镜像内关键产物，不能只根据源码、构建命令退出码或容器创建成功判断新代码已生效。
 
 ---
 
@@ -858,7 +846,7 @@
 - **根因**：index 2 是 `DocumentsService`，真实 Provider 链为 `DocumentsService -> SyncGateway -> DocumentProjectionService -> DocumentsService`。此前只处理 `DocumentsService <-> SyncGateway`，但 `SyncGateway -> DocumentProjectionService` 和 `DocumentProjectionService -> DocumentsService` 仍由 TypeScript 的运行时类型元数据直接解析，在 CommonJS 模块求值期间得到 `undefined`。
 - **修复**：为 `DocumentProjectionService` 注入的 `DocumentsService`、`SyncGateway` 注入的 `DocumentProjectionService` 分别增加 `@Inject(forwardRef(() => ...))`；扩展生产 `AppModule` 加载顺序回归测试，逐一断言三方循环中的延迟注入元数据。
 - **本地验证**：Server build 与 typecheck 通过；Server 单元测试 52 passed、1 skipped；三处修改文件的定向 ESLint 通过。
-- **验证标准**：Server 单元测试、typecheck、build 通过；生产重新构建的镜像包含两处新增 `forwardRef`；容器日志不再出现 `UndefinedDependencyException` 或 `UndefinedModuleException`；`/readyz` 返回成功。
+- **验证**：Server 单元测试、typecheck、build 通过；最终生产镜像包含三方循环需要的延迟注入修复；容器日志不再出现 `UndefinedDependencyException` 或 `UndefinedModuleException`；`/readyz` 返回 HTTP 200。本项已完成生产验证。
 - **教训**：循环依赖排查不能只看报错中的一对类。Provider 图中任意长度的闭环都可能受模块求值顺序影响；回归测试应覆盖完整闭环的每条注入边，而不能只断言首次暴露的边。
 
 ---
@@ -907,7 +895,8 @@
 - **现象**：在约 1.6GB 内存的 ECS 上、业务容器仍全部运行时执行 Server `build --no-cache`；依赖安装完成并进入 `nest build` 后，SSH 端口可建立 TCP 连接但不返回 banner，HTTPS 同样建连后无响应，Shadowsocks 不可用，只能通过云控制台重启实例恢复。
 - **证据边界**：重启后上一启动周期没有可读取的 OOM kernel 记录，因此不能把 OOM 作为已证实根因；但故障与无缓存构建时间重合，症状符合内存、CPU 或 I/O 资源耗尽。构建未产出新镜像，重启后运行镜像仍缺少本次回填脚本和索引修复。
 - **恢复**：实例重启后，Shadowsocks、PostgreSQL、Redis、MinIO、Server 依靠 restart policy 自动恢复；重启本机 `frpc` 后，FRPS 恢复 `18090` 映射，`/api/ai/ping` 再次全绿。
-- **安全部署**：改为在开发机执行 Nest build，上传经过 SHA-256 校验的完整 `dist`；ECS 以旧镜像为只读基线生成轻量覆盖镜像，保留 `repo-server:rollback-pre-ab52f6f`，再使用 `--no-build --force-recreate server` 替换。该方式未在 ECS 安装依赖或编译 TypeScript。
+- **安全部署**：改为在开发机执行 Nest build，上传经过 SHA-256 校验的完整 `dist`；ECS 以旧镜像为只读基线生成轻量覆盖镜像，使用本次临时回滚标签，再通过 `--no-build --force-recreate server` 替换。该方式未在 ECS 安装依赖或编译 TypeScript。
+- **回滚清理**：2026-09-05 在确认当前版本稳定、没有容器引用历史标签后，删除 `repo-server:rollback-pre-a574505` 和 `repo-server:rollback-pre-ab52f6f`；只保留当前运行的 `repo-server:latest`。PostgreSQL/uploads 业务备份未删除。
 - **验证**：新镜像包含 `dist/scripts/backfill-document-index.js` 和索引生命周期修复；`/readyz`、公网 Web、`/api/ai/ping` 均返回 HTTP 200；所有核心容器保持运行，部署后可用内存约 890MB、Swap 未使用。
 - **教训**：低内存生产机不能把 `--no-cache` 当成解决陈旧镜像的默认手段。Server 镜像应在开发机或 CI 构建后传入生产；部署前检查资源，替换时使用 `--no-build`，并保留可立即恢复的旧镜像。
 
@@ -923,3 +912,16 @@
 - **修复**：候选同时满足绝对相似度 `>= 0.30` 和相对最佳结果 `>= 85%` 才进入模型上下文；回答完成后仅保留实际出现的合法 `[#n]`，按首次出现顺序重新编号并同步裁剪 `citations`，移除模型生成的越界编号。
 - **验证**：新增 6 个单元测试覆盖生产分数分布、多篇强相关、低于绝对阈值、部分引用重编号、越界引用和无引用回答；Server 单元测试 `64 passed / 1 skipped / 0 failed`，Server typecheck、仓库级 typecheck 与本次 4 个文件的定向 ESLint 通过。生产部署后，同一问题仍取得 5 个 Top-K 候选，但相关性过滤由 5 条收敛为 1 条（保留分数 `0.4408`），实际引用筛选返回 1 条；`/readyz` 与 `/api/ai/ping` 均为 HTTP 200。仓库级 lint 仍受既有错误阻断，与本项无关。
 - **教训**：Top-K 是供模型判断的候选上下文，不等于最终引用来源；检索相关性过滤和模型实际引用过滤必须分层执行。
+
+---
+
+## #51 Web 部署脚本在 Windows Git Bash 缺少 rsync 时失败
+
+- **日期**：2026-09-05
+- **模块**：`deploy/scripts/build-web-local.sh`、`deploy/scripts/deploy-web.sh`
+- **现象**：Web 在 Windows Git Bash 中成功构建，但执行旧 `deploy-web.sh` 报 `rsync: command not found`；改用 Windows 系统 `bash` 又因未安装 WSL 报 `/bin/bash: No such file or directory`。
+- **根因**：旧脚本无条件依赖 rsync，而 Git for Windows 默认提供 ssh/scp/tar、并不保证提供 rsync；同时 Windows 系统 `bash.exe` 是 WSL 入口，不等同于 Git Bash。
+- **修复**：统一要求 Windows 使用 Git Bash；构建脚本采用锁定依赖并验证 dist；部署改为 `tar.gz + SHA-256 + scp + ssh`，远端先解压到临时目录再切换，修正静态权限，并用首页及真实 JS/CSS 完成 HTTP 验收。
+- **回滚与清理**：发布切换阶段保留本次旧 Web 目录，HTTP 验收失败自动恢复；成功后按确认策略清除全部历史 Web 发布目录，不保留功能差异过大的旧静态版本。
+- **验证**：纯 Bash 回归测试覆盖缺参、产物缺失、SHA-256 拒绝、成功切换、全历史清理和失败回滚；Git Bash 语法检查通过。发布构建使用 `--force`，12 个 workspace 任务均为实际执行、Turbo `Cached: 0`。2026-09-05 使用新脚本完成生产发布，本地与远端 `index.html` SHA-256 一致；首页 HTTP 200，实际 JS 资源 HTTP 200 且 Content-Type 为 `application/javascript`；远端 Web 历史目录数量为 0。
+- **教训**：部署脚本的运行平台和工具依赖必须显式声明；静态目录不能原地 `--delete` 后再验证，应先生成候选目录，保留短暂回滚点并在验收后提交发布。

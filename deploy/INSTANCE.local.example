@@ -3,8 +3,12 @@
 #   cp deploy/INSTANCE.local.example deploy/INSTANCE.local.md
 
 DOMAIN=app.example.com
+PUBLIC_URL=https://app.example.com
+ECS_USER=root
 ECS_HOST=your.ecs.ip
+SSH_PORT=22
 SSH_KEY_PATH=/path/to/your-ecs-key.pem
+WEB_REMOTE_ROOT=/opt/inkweaver/web
 SMTP_USER=your@example.com
 
 # SMTP_PASS 仅在本机 export，勿写入此文件：

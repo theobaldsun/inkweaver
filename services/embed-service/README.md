@@ -2,16 +2,25 @@
 
 CPU 上运行 `BAAI/bge-small-zh-v1.5`（512 维），供阿里云 Nest 通过 HTTP / FRP 调用。
 
-## 本地启动
+## Windows PowerShell 启动
+
+```powershell
+Set-Location services/embed-service
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+$env:EMBED_SERVICE_TOKEN = 'change-me'
+uvicorn app:app --host 127.0.0.1 --port 8090
+```
+
+Linux/macOS：
 
 ```bash
 cd services/embed-service
-python -m venv .venv
-# Windows: .venv\Scripts\activate
+python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-
-set EMBED_SERVICE_TOKEN=change-me   # PowerShell: $env:EMBED_SERVICE_TOKEN="change-me"
+python -m pip install -r requirements.txt
+export EMBED_SERVICE_TOKEN='change-me'
 uvicorn app:app --host 127.0.0.1 --port 8090
 ```
 
@@ -30,24 +39,24 @@ AI_CHAT_API_KEY=sk-...
 AI_CHAT_MODEL=deepseek-chat
 ```
 
-生产经 FRP 时，将 `AI_EMBED_BASE_URL` 改为 ECS 可访问的 frp 映射地址（如 `https://embed.example.com`）。
+生产经当前 FRP TCP 映射时，Nest 容器使用：
+
+```env
+AI_EMBED_BASE_URL=http://host.docker.internal:18090
+```
+
+完整的 Windows frpc、Ubuntu frps、Token 文件、UFW/Docker bridge 与逐层验收见
+[FRP 内网穿透与本机 Embedding 服务](../../docs/内网穿透与Embedding服务.md)。
 
 ## FRP 安全约定
 
 1. **必须**设置 `EMBED_SERVICE_TOKEN`，与 Nest `AI_EMBED_TOKEN` 一致。
 2. frps 若部署在 ECS：仅开放必要端口；优先 TLS / frp 加密。
-3. 尽量限制来源为 ECS 出口 IP（防火墙 / frp allow）。
+3. 云安全组只向本机网络开放 frps 控制端口 7000，不向公网开放映射端口 18090。
 4. 笔记本休眠则 RAG 不可用——属开发/个人验证期预期；上线前可把 `AI_EMBED_BASE_URL` 切到云端 Embedding，业务代码无需改。
 
-示例 frpc 片段（按你的 frps 调整）：
-
-```ini
-[inkweaver-embed]
-type = http
-local_ip = 127.0.0.1
-local_port = 8090
-custom_domains = embed.example.com
-```
+FRP 0.71 使用 TOML；不要混用旧版 INI 示例。当前链路使用 TCP proxy：Windows
+`127.0.0.1:8090` 映射到 ECS `18090`。
 
 ## 维度锁定
 

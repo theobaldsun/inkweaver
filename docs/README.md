@@ -8,7 +8,12 @@
 |------|------|--------------|
 | [架构.md](./架构.md) | Monorepo 分层、依赖边界、本地优先与同步链路、功能模块架构概览 | `package.json`、`apps/`、`packages/` |
 | [UI规范.md](./UI规范.md) | 设计令牌、组件、编辑器和响应式约定 | `apps/web/src/index.css`、`packages/ui`、`packages/editor-web` |
-| [运维.md](./运维.md) | 本地环境、Docker、生产部署、迁移、监控与常见故障 | Compose、`deploy/`、`apps/server` |
+| [部署与发布.md](./部署与发布.md) | 当前 ECS 的完整发布、低内存流程、验收、回滚与典型问题 | Compose、`deploy/`、生产验证记录 |
+| [运维.md](./运维.md) | 环境、生产拓扑、健康检查和常见运行故障 | Compose、`deploy/`、`apps/server` |
+| [内网穿透与Embedding服务.md](./内网穿透与Embedding服务.md) | Windows embedding、frpc、ECS frps、Token、防火墙和链路排障 | `services/embed-service`、FRP 配置 |
+| [Ubuntu服务器操作指令.md](./Ubuntu服务器操作指令.md) | Ubuntu、systemd、UFW、Nginx、Docker、Git 与资源排障命令 | 当前 ECS 运维流程 |
+| [PostgreSQL数据库操作语句.md](./PostgreSQL数据库操作语句.md) | psql、CRUD、事务、JSONB、数组、全文检索、pgvector 和 migration | PostgreSQL 16、pgvector、TypeORM |
+| [Issue.md](./Issue.md) | 已发现缺陷的根因、修复、验证和状态 | 代码、测试与生产证据 |
 
 项目级工程工作流与验证要求见根目录 [AGENTS.md](../AGENTS.md)。
 
@@ -26,6 +31,8 @@
 - 架构、依赖或运行链路变化时更新 `架构.md`。
 - 设计令牌或 UI 约束变化时更新 `UI规范.md`；具体数值同时以源码中的令牌为准。
 - 环境变量、部署脚本、迁移或监控方式变化时更新 `运维.md`。
+- 完整发布顺序或回滚策略变化时更新 `部署与发布.md`；`deploy/README.md` 只保留脚本速查。
+- FRP、embedding 地址、Token 分层或防火墙链路变化时更新 `内网穿透与Embedding服务.md`。
 - 已关闭 Bug、一次性验收状态、迁移过程记录和旧文件名跳转不进入长期文档；必要信息应归并为仍可执行的规则或排障步骤。
 - 不记录密码、Token、私钥、完整 `.env`、真实服务器地址或其他实例私密信息。
 - 技术笔记按编号独立成文于 `docs/notes/`，主文件仅作导览；新增笔记时同步更新目录表。

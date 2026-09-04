@@ -3,7 +3,7 @@
 ## 笔记 #8：PostgreSQL 数组与 jsonb 操作符语义边界
 
 **日期**：2026-08-31
-**关联代码**：[apps/server/src/modules/search/search.service.ts](file:///d:/Codex_Workspaces/software-development/projects/SyncBox-AI/apps/server/src/modules/search/search.service.ts) 的 `searchExact` / `searchRelated` / `searchFuzzy`
+**关联代码**：[apps/server/src/modules/search/search.service.ts](../../apps/server/src/modules/search/search.service.ts) 的 `searchExact` / `searchRelated` / `searchFuzzy`
 
 **核心问题**：TypeORM entity 将列声明为 jsonb，但 SQL 写成了数组操作符，导致运行时类型错误被 `.catch(() => [])` 静默吞掉，三路搜索通道长期返回空结果而前端无报错。
 
@@ -23,12 +23,12 @@ InkWeaver 的搜索服务把 `documents.tags` 列以 TypeORM `jsonb` 类型声�
 
 ### 二、三操作符语义对照表
 
-| 操作符  | 类型域   | 语义           | 集合论           | 返回类型      | <br />  |
-| ---- | ----- | ------------ | ------------- | --------- | :------ |
-| `@>` | array | 左包含右的所有元素    | A ⊇ B         | boolean   | <br />  |
-| `@>` | jsonb | 左 JSON 结构包含右 | 结构包含          | boolean   | <br />  |
-| \`?  | \`    | jsonb        | 左存在右指定的任一 key | A ∩ B ≠ ∅ | boolean |
-| `&&` | array | 左与右有任一共同元素   | A ∩ B ≠ ∅     | boolean   | <br />  |
+| 操作符 | 类型域 | 语义 | 集合论 | 返回类型 |
+|--------|--------|------|--------|----------|
+| `@>` | array | 左包含右的所有元素 | A ⊇ B | boolean |
+| `@>` | jsonb | 左 JSON 结构包含右 | 结构包含 | boolean |
+| `?|` | jsonb | 左存在右指定的任一顶层 key/数组元素 | A ∩ B ≠ ∅ | boolean |
+| `&&` | array | 左与右有任一共同元素 | A ∩ B ≠ ∅ | boolean |
 
 关键结论：
 
@@ -65,13 +65,13 @@ cardinality(text[])
 
 **坑点 1**：`array_length(arr, 1)` 对空数组返回 `NULL` 而不是 0，在 `CASE WHEN array_length(...) > 0` 这类条件里会因为 `NULL > 0` 为 `NULL`（falsy）而走错分支。应统一用 `cardinality(arr)`（空数组返回 0）。
 
-**坑点 2**：`tsvector_to_array` 严格期望 `tsvector` 入参。`plainto_tsquery('hello world')` 返回的是 `tsquery`（带位置权重的查询对象），不是 `tsvector`，混用会抛类型错误。若需要把 tsquery 拆成词元数组，应先 `unnest(tsquery::tsvector)` 或直接用 `to_tsvector('word')` 构造。
+**坑点 2**：`tsvector_to_array` 严格期望 `tsvector` 入参。`plainto_tsquery('hello world')` 返回的是 `tsquery`（查询表达式），不是 `tsvector`，混用会抛类型错误。PostgreSQL 没有可依赖的 `tsquery::tsvector` 直接转换；若需要查询文本的词元数组，应保留原始查询文本，使用相同配置执行 `tsvector_to_array(to_tsvector('simple', query_text))`。
 
 ***
 
 ### 四、项目代码关联
 
-引用 [search.service.ts](file:///d:/Codex_Workspaces/software-development/projects/SyncBox-AI/apps/server/src/modules/search/search.service.ts) 的三段 SQL 通道：
+引用 [search.service.ts](../../apps/server/src/modules/search/search.service.ts) 的三段 SQL 通道：
 
 #### 4.1 searchExact（L183, L188）
 
@@ -127,7 +127,7 @@ cardinality(
   ARRAY(
     SELECT unnest(tsvector_to_array("docTsv"))
     INTERSECT
-    SELECT unnest(to_tsvector('query text'))
+    SELECT unnest(tsvector_to_array(to_tsvector('simple', 'query text')))
   )
 )
 ```
@@ -200,4 +200,3 @@ CREATE INDEX IF NOT EXISTS idx_documents_doctsv_gin
 两条 Issue 的修复均以本笔记为根因参考：把 array 域操作符换成 jsonb 域同义操作符，并把降级路径加上 `logger.warn` 让失败可见。
 
 ***
-
