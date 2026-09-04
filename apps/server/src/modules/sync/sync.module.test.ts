@@ -33,6 +33,7 @@ test('AppModule 加载顺序下延迟解析 Sync/Documents 循环依赖', async 
     const { AppModule } = await import('../../app.module.js');
     const { DocumentsModule } = await import('../documents/documents.module.js');
     const { DocumentsService } = await import('../documents/documents.service.js');
+    const { DocumentProjectionService } = await import('./document-projection.service.js');
     const { SyncGateway } = await import('./sync.gateway.js');
     const { SyncModule } = await import('./sync.module.js');
 
@@ -57,6 +58,27 @@ test('AppModule 加载顺序下延迟解析 Sync/Documents 循环依赖', async 
     assert.ok(documentsServiceRef);
     assert.equal(typeof documentsServiceRef.forwardRef, 'function');
     assert.equal(documentsServiceRef.forwardRef(), DocumentsService);
+
+    const projectionDependencies = (
+      Reflect.getMetadata(SELF_DECLARED_DEPS_METADATA, DocumentProjectionService) as
+        | DeclaredDependency[]
+        | undefined
+    ) ?? [];
+    const projectionDocumentsDependency = projectionDependencies.find(({ index }) => index === 2);
+    const projectionDocumentsRef = projectionDocumentsDependency?.param as
+      | ForwardReference<unknown>
+      | undefined;
+
+    assert.ok(projectionDocumentsRef);
+    assert.equal(typeof projectionDocumentsRef.forwardRef, 'function');
+    assert.equal(projectionDocumentsRef.forwardRef(), DocumentsService);
+
+    const projectionDependency = dependencies.find(({ index }) => index === 3);
+    const projectionRef = projectionDependency?.param as ForwardReference<unknown> | undefined;
+
+    assert.ok(projectionRef);
+    assert.equal(typeof projectionRef.forwardRef, 'function');
+    assert.equal(projectionRef.forwardRef(), DocumentProjectionService);
   } finally {
     if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = previousNodeEnv;

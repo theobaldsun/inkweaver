@@ -821,3 +821,42 @@
 - **修复**：`SyncModule` 使用 `forwardRef(() => DocumentsModule)`；`SyncGateway` 使用 `@Inject(forwardRef(() => DocumentsService))`；新增按 `AppModule` 加载顺序验证模块和 Provider 元数据的回归测试。
 - **验证**：复现修复前 `SyncModule imports[3].isUndefined=true`；修复后新增回归测试通过，Server build、typecheck 通过，Server 单元测试 52 passed、1 skipped。本项仍需部署后以 `/readyz` 和容器日志完成生产验证。
 - **教训**：Nest 循环依赖必须同时处理模块层和 Provider 层两端；仅运行 TypeScript build 或手工 new Service 的单测无法替代模块树启动测试。
+
+---
+
+## #45 Docker 构建缓存导致 Nest 镜像继续使用旧 dist
+
+- **日期**：2026-09-03
+- **模块**：`docker-compose.prod.yml`、Server 镜像构建与生产部署流程
+- **现象**：源码中的 `SyncModule -> DocumentsModule` 已增加 `forwardRef`，但执行 `docker compose up -d --build` 后，`repo-server` 镜像内的 `/app/dist/modules/sync/sync.module.js` 仍是上一次构建产物，生产容器继续出现 #44 的 `UndefinedModuleException`。
+- **证据**：ECS 上源码 `apps/server/src/modules/sync/sync.module.ts` 的修改时间为 `2026-09-03 19:36:24 +0800`；镜像内 `sync.module.js` 的构建时间为 `2026-09-03 09:40:06 +0000`（即 `17:40:06 +0800`），早于源码修改时间；在镜像内执行 `grep 'forwardRef' /app/dist/modules/sync/sync.module.js` 返回 `NO forwardRef FOUND`。
+- **根因**：本次 `docker compose up -d --build` 没有生成包含最新 Server 源码的镜像，构建过程复用了旧缓存层，导致旧 `dist` 被继续打包和启动。当前证据确认的是“镜像产物陈旧”；若禁用缓存后仍复现，还需继续检查 Compose 的 `build.context`、`.dockerignore`、Dockerfile 的 `COPY` 路径以及实际启动的镜像标签。
+- **处置**（待生产验证）：先停止 Server 的重启循环，再对 Server 镜像执行无缓存构建：
+  ```bash
+  docker compose \
+    -p repo \
+    -f docker-compose.prod.yml \
+    --env-file .env.prod \
+    build --no-cache server
+
+  docker compose \
+    -p repo \
+    -f docker-compose.prod.yml \
+    --env-file .env.prod \
+    up -d --force-recreate server
+  ```
+- **验证标准**：新镜像内 `sync.module.js` 能检索到 `forwardRef`；容器日志不再出现 `UndefinedModuleException`；`curl -fsS http://127.0.0.1:3000/readyz` 成功。三项全部满足后，才能把 #44 和本项标记为生产验证完成。
+- **教训**：`--build` 只表示构建缺失或判定为变化的层，不等于禁用 Docker layer cache。生产热修复部署后必须核对镜像内关键产物，不能只根据源码、构建命令退出码或容器创建成功判断新代码已生效。
+
+---
+
+## #46 DocumentProjectionService 三方 Provider 循环导致生产启动失败
+
+- **日期**：2026-09-04
+- **模块**：`apps/server/src/modules/sync/document-projection.service.ts`、`sync.gateway.ts`、`apps/server/src/modules/documents/documents.service.ts`
+- **现象**：#44 的模块循环修复进入新镜像后，Nest 启动继续报 `UndefinedDependencyException`：无法解析 `DocumentProjectionService (SyncUpdateRepository, DocSnapshotRepository, ?)`，index 2 依赖在运行时为 `undefined`；`restart: unless-stopped` 使容器不断重启并重复输出相同日志。
+- **根因**：index 2 是 `DocumentsService`，真实 Provider 链为 `DocumentsService -> SyncGateway -> DocumentProjectionService -> DocumentsService`。此前只处理 `DocumentsService <-> SyncGateway`，但 `SyncGateway -> DocumentProjectionService` 和 `DocumentProjectionService -> DocumentsService` 仍由 TypeScript 的运行时类型元数据直接解析，在 CommonJS 模块求值期间得到 `undefined`。
+- **修复**：为 `DocumentProjectionService` 注入的 `DocumentsService`、`SyncGateway` 注入的 `DocumentProjectionService` 分别增加 `@Inject(forwardRef(() => ...))`；扩展生产 `AppModule` 加载顺序回归测试，逐一断言三方循环中的延迟注入元数据。
+- **本地验证**：Server build 与 typecheck 通过；Server 单元测试 52 passed、1 skipped；三处修改文件的定向 ESLint 通过。
+- **验证标准**：Server 单元测试、typecheck、build 通过；生产重新构建的镜像包含两处新增 `forwardRef`；容器日志不再出现 `UndefinedDependencyException` 或 `UndefinedModuleException`；`/readyz` 返回成功。
+- **教训**：循环依赖排查不能只看报错中的一对类。Provider 图中任意长度的闭环都可能受模块求值顺序影响；回归测试应覆盖完整闭环的每条注入边，而不能只断言首次暴露的边。

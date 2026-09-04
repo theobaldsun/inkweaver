@@ -77,6 +77,8 @@ export class SyncGateway implements OnGatewayConnection {
     // DocumentsService 反向依赖本 Gateway 执行房间驱逐，需延迟解析循环 Provider。
     @Inject(forwardRef(() => DocumentsService))
     private readonly documentsService: DocumentsService,
+    // 本 Gateway 与 DocumentsService、DocumentProjectionService 构成三方循环。
+    @Inject(forwardRef(() => DocumentProjectionService))
     private readonly documentProjectionService: DocumentProjectionService,
     private readonly snapshotService: SnapshotService,
     private readonly authService: AuthService,

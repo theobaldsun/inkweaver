@@ -3,7 +3,7 @@
  */
 
 import { base64ToUint8Array } from '@inkweaver/shared';
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { MoreThan, Repository } from 'typeorm';
 import * as Y from 'yjs';
@@ -39,6 +39,8 @@ export class DocumentProjectionService {
     private readonly syncUpdateRepository: Repository<SyncUpdate>,
     @InjectRepository(DocSnapshot)
     private readonly docSnapshotRepository: Repository<DocSnapshot>,
+    // DocumentsService -> SyncGateway -> 本 Service 构成三方循环，必须延迟解析。
+    @Inject(forwardRef(() => DocumentsService))
     private readonly documentsService: DocumentsService,
   ) {}
 
