@@ -489,4 +489,3 @@ VACUUM (ANALYZE) documents;
 - migration 在隔离 PostgreSQL + pgvector 上演练。
 - 应用回滚必须同时评估数据库结构兼容性。
 - 数据备份与 Docker 镜像备份分开管理。
-

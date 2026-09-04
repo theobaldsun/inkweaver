@@ -361,4 +361,3 @@ Set-Location C:\frp
 ### 电脑休眠或重启后 AI 不可用
 
 embedding 和 frpc 都在本机，电脑休眠会中断生产 RAG。当前 frpc 若只是前台进程，Windows 重启后必须手动启动。长期生产应迁移到常驻服务或云 embedding；在此之前可使用 Windows Task Scheduler/服务包装器实现登录后自启，但安装和权限配置应单独评审。
-
