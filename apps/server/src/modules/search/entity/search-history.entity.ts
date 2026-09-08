@@ -1,8 +1,9 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, CreateDateColumn, UpdateDateColumn, Unique } from 'typeorm';
 
 import { User } from '../../users/entity/user.entity';
 
 @Entity('search_history')
+@Unique(['userId', 'keyword'])
 export class SearchHistory {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -13,7 +14,7 @@ export class SearchHistory {
   @Column({ type: 'int', default: 1 })
   count!: number;
 
-  @ManyToOne(() => User, (user) => user.searchHistory)
+  @ManyToOne(() => User, (user) => user.searchHistory, { onDelete: 'CASCADE' })
   user!: User;
 
   @Column({ type: 'varchar' })

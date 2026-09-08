@@ -2,8 +2,8 @@
  * 应用级环境变量与启动期密钥校验。
  */
 
-import { ConfigService } from '@nestjs/config';
 import { createLogger } from '@inkweaver/shared';
+import { ConfigService } from '@nestjs/config';
 
 const logger = createLogger({ scope: 'server:config' });
 

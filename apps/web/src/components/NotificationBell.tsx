@@ -2,10 +2,10 @@
  * 顶栏通知铃铛：未读数 + 最近通知下拉。
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Bell } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { notificationApi, type NotificationItem } from '@inkweaver/api';
+import { Bell } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export const NotificationBell: React.FC = () => {
   const navigate = useNavigate();

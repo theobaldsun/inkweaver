@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import * as Y from 'yjs';
-import type { DataSource, EntityManager } from 'typeorm';
 
 import { SyncGateway } from './sync.gateway';
+
+import type { DataSource, EntityManager } from 'typeorm';
+
 
 function createMockDataSource(
   managerOverrides: Record<string, unknown> = {},

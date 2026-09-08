@@ -2,11 +2,13 @@
  * 账户设置 Tab：资料、改密、退出与删号入口。
  */
 
-import React, { useState } from 'react';
-import { LogOut, Trash2, User } from 'lucide-react';
-import CustomModal from '../CustomModal';
-import { getAssetUrl } from '../../utils/assetUrl';
 import { MIN_PASSWORD_LENGTH, type User as UserType } from '@inkweaver/shared';
+import { LogOut, Trash2, User } from 'lucide-react';
+import React, { useState } from 'react';
+
+import { getAssetUrl } from '../../utils/assetUrl';
+import CustomModal from '../CustomModal';
+
 
 interface ProfileAccountTabProps {
   user: UserType | null;

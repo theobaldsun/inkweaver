@@ -4,6 +4,7 @@
 
 export {
   apiClient,
+  configureApiClient,
   createApiClient,
   setStorageAdapter,
   getStorageAdapter,

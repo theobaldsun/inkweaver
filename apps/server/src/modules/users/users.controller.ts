@@ -22,22 +22,23 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
-import type { Request as ExpressRequest, Response } from 'express';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiConsumes } from '@nestjs/swagger';
 
-import { getUserId } from '../../common/get-user-id';
 import { parseClientMeta } from '../../common/parse-client-meta';
 import { AuthGuard } from '../auth/guard/auth.guard';
 import { SessionService } from '../auth/session.service';
-import { CreateUserDto } from './dto/createUser.dto';
-import { LoginDto } from './dto/login.dto';
-import { UpdateUserDto } from './dto/updateUser.dto';
 import { ChangePasswordDto } from './dto/changePassword.dto';
-import { UpdateUserSettingsDto } from './dto/update-user-settings.dto';
+import { CreateUserDto } from './dto/createUser.dto';
 import { DeleteWithPasswordDto } from './dto/delete-with-password.dto';
-import { UsersService } from './users.service';
+import { LoginDto } from './dto/login.dto';
+import { UpdateUserSettingsDto } from './dto/update-user-settings.dto';
+import { UpdateUserDto } from './dto/updateUser.dto';
 import { UserDataService } from './user-data.service';
+import { UsersService } from './users.service';
+import { getUserId } from '../../common/get-user-id';
+
+import type { Request as ExpressRequest, Response } from 'express';
 
 @Controller('/api/users')
 @ApiTags('users')

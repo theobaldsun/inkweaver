@@ -2,8 +2,8 @@
  * 存储用量查询 DTO。
  */
 
-import { IsBoolean, IsOptional } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { IsBoolean, IsOptional } from 'class-validator';
 
 export class StorageUsageQueryDto {
   @IsOptional()

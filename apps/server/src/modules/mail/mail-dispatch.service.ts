@@ -2,10 +2,13 @@
  * 邮件入队服务：HTTP 层只 enqueue，不阻塞 SMTP。
  */
 
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import { createHash } from 'crypto';
+
+import { InjectQueue } from '@nestjs/bullmq';
+import { Injectable, Logger } from '@nestjs/common';
+import { Queue } from 'bullmq';
+
+
 import { MAIL_QUEUE, type SendMailJobPayload } from './mail.constants';
 
 @Injectable()

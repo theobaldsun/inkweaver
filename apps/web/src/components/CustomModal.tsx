@@ -1,9 +1,9 @@
 /**
  * 自定义确认弹窗与全局 Alert（showAlert）。
  */
-import React, { useEffect, useId, useRef, useSyncExternalStore } from 'react';
-import { createPortal } from 'react-dom';
-import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from "lucide-react";
+import React, { useEffect, useId, useRef, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 
 interface CustomModalProps {
   isOpen: boolean;
@@ -18,7 +18,7 @@ interface CustomModalProps {
 interface AlertConfig {
   title: string;
   message: string;
-  type: 'success' | 'error' | 'warning' | 'info';
+  type: "success" | "error" | "warning" | "info";
 }
 
 const CustomModal: React.FC<CustomModalProps> = ({
@@ -34,6 +34,8 @@ const CustomModal: React.FC<CustomModalProps> = ({
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const onCancelRef = useRef(onCancel);
+  onCancelRef.current = onCancel;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -42,11 +44,11 @@ const CustomModal: React.FC<CustomModalProps> = ({
     confirmRef.current?.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onCancel();
+      if (event.key === "Escape") {
+        onCancelRef.current();
         return;
       }
-      if (event.key !== 'Tab' || !dialogRef.current) return;
+      if (event.key !== "Tab" || !dialogRef.current) return;
 
       const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
         'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
@@ -63,12 +65,12 @@ const CustomModal: React.FC<CustomModalProps> = ({
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener("keydown", handleKeyDown);
       previouslyFocused?.focus?.();
     };
-  }, [isOpen, onCancel]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -90,7 +92,9 @@ const CustomModal: React.FC<CustomModalProps> = ({
           </button>
         </div>
         <div className="modal-body">
-          <p id={descriptionId} className="custom-modal-message">{message}</p>
+          <p id={descriptionId} className="custom-modal-message">
+            {message}
+          </p>
           {showCustomContent && customContent}
         </div>
         <div className="modal-footer">
@@ -112,15 +116,15 @@ const CustomModal: React.FC<CustomModalProps> = ({
   );
 };
 
-const AlertIcon: React.FC<{ type: AlertConfig['type'] }> = ({ type }) => {
+const AlertIcon: React.FC<{ type: AlertConfig["type"] }> = ({ type }) => {
   switch (type) {
-    case 'success':
+    case "success":
       return <CheckCircle size={24} className="alert-icon success" />;
-    case 'error':
+    case "error":
       return <AlertCircle size={24} className="alert-icon error" />;
-    case 'warning':
+    case "warning":
       return <AlertTriangle size={24} className="alert-icon warning" />;
-    case 'info':
+    case "info":
     default:
       return <Info size={24} className="alert-icon info" />;
   }
@@ -205,7 +209,11 @@ export const Alert: React.FC = () => {
  *
  * @returns 用户点击确定后 resolve true；若被新 Alert 抢占则 resolve false
  */
-export const showAlert = (title: string, message: string, type: AlertConfig['type'] = 'info'): Promise<boolean> => {
+export const showAlert = (
+  title: string,
+  message: string,
+  type: AlertConfig["type"] = "info",
+): Promise<boolean> => {
   // 若已有 Alert 正在显示，先 resolve 旧 Promise（避免内存泄漏）
   if (alertState?.isOpen) {
     alertState.resolve(false);

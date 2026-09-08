@@ -10,27 +10,26 @@
  */
 
 import { Module, forwardRef } from "@nestjs/common";
-import { TypeOrmModule } from "@nestjs/typeorm";
 import { JwtModule } from "@nestjs/jwt";
-import { AuthModule } from "../auth/auth.module";
-import { AiModule } from "../ai/ai.module";
+import { TypeOrmModule } from "@nestjs/typeorm";
 
-import { DocumentsController } from "./documents.controller";
+import { DocumentsPublicController } from "./documents-public.controller";
 import { DocumentsTrashController } from "./documents-trash.controller";
+import { DocumentsController } from "./documents.controller";
 import { DocumentsService } from "./documents.service";
+import { AiModule } from "../ai/ai.module";
+import { AuthModule } from "../auth/auth.module";
 import { Document } from "./entity/document.entity";
 import { Folder } from "./entity/folder.entity";
-import { SyncUpdate } from "../sync/entity/sync-update.entity";
-import { DocSnapshot } from "../sync/entity/doc-snapshot.entity";
 import { FoldersController } from "./folders.controller";
 import { FoldersService } from "./folders.service";
 import { TrashCleanupService } from "./trash-cleanup.service";
-import { StorageModule } from "../storage/storage.module";
-import { NotificationsModule } from "../notifications/notifications.module";
-import { DocumentsPublicController } from "./documents-public.controller";
-import { SyncModule } from "../sync/sync.module";
-
 import { getJwtModuleOptions } from '../../config/jwt.config';
+import { NotificationsModule } from "../notifications/notifications.module";
+import { StorageModule } from "../storage/storage.module";
+import { DocSnapshot } from "../sync/entity/doc-snapshot.entity";
+import { SyncUpdate } from "../sync/entity/sync-update.entity";
+import { SyncModule } from "../sync/sync.module";
 
 @Module({
   imports: [

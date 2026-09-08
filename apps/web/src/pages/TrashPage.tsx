@@ -4,13 +4,17 @@
  * 用途：展示已删除文档、恢复、永久删除与清空回收站
  */
 
+import { TRASH_RETENTION_DAYS } from '@inkweaver/shared';
+import { Trash2, RotateCcw, FileText, Loader2, AlertTriangle } from 'lucide-react';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Trash2, RotateCcw, FileText, Loader2, AlertTriangle } from 'lucide-react';
-import { documentService } from '../services/apiClient';
-import { TRASH_RETENTION_DAYS } from '@inkweaver/shared';
-import type { Document } from '@inkweaver/shared';
+
 import CustomModal from '../components/CustomModal';
+import { documentService } from '../services/apiClient';
+
+
+import type { Document } from '@inkweaver/shared';
+
 
 interface TrashItem extends Document {
   purgeAt?: string;

@@ -9,8 +9,9 @@ import { Job } from 'bullmq';
 import { AI_INDEX_QUEUE, type AiIndexJobPayload } from './ai.constants';
 import { chunkPlainText, htmlToPlainText } from './chunking';
 import { EmbeddingClient } from './embedding.client';
-import type { VectorStore } from './vector/vector-store';
 import { VECTOR_STORE } from './vector/vector-store.token';
+
+import type { VectorStore } from './vector/vector-store';
 
 @Processor(AI_INDEX_QUEUE, { concurrency: 1 })
 export class AiIndexProcessor extends WorkerHost {

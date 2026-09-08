@@ -5,11 +5,11 @@
  * 输出：文件流或 next()
  */
 
-import type { NextFunction, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 
 import type { ObjectStorageService } from './object-storage.service';
+import type { NextFunction, Request, Response } from 'express';
 
 const CONTENT_TYPES: Record<string, string> = {
   '.png': 'image/png',

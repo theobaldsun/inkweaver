@@ -65,6 +65,12 @@ export default tseslint.config(
     },
   },
   {
+    files: ["apps/server/scripts/**/*.mjs", "scripts/**/*.mjs"],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
     /**
      * NestJS 场景说明：
      * - DTO/Controller 的类引用会参与运行时的装饰器元数据（emitDecoratorMetadata）
@@ -85,4 +91,3 @@ export default tseslint.config(
     ],
   },
 );
-

@@ -1,6 +1,6 @@
-import { IsString, Matches } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
 import { PASSWORD_DIGEST_REGEX } from '@inkweaver/shared';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsString, Matches } from 'class-validator';
 
 const DIGEST_MESSAGE = '必须为 SHA-256 十六进制摘要（64 位），禁止提交明文密码';
 

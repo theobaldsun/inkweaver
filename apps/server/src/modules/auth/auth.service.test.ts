@@ -20,10 +20,7 @@ test('refreshToken 在用户不存在时抛出 401', async () => {
       },
     } as never,
     {
-      async validateRefreshToken() {
-        return { id: 'session-1' };
-      },
-      async updateSessionDeviceInfo() {},
+      async rotateRefreshToken() {},
     } as never,
     {
       async findOne() {
@@ -51,10 +48,7 @@ test('checkSessionAndRefresh 使用数据库中的 name/email', async () => {
       },
     } as never,
     {
-      async checkSessionValidity() {
-        return { isValid: true, session: { id: 'session-1' } };
-      },
-      async updateSessionDeviceInfo() {},
+      async rotateRefreshToken() {},
     } as never,
     {
       async findOne() {
@@ -74,4 +68,40 @@ test('checkSessionAndRefresh 使用数据库中的 name/email', async () => {
   assert.equal(result.user?.email, 'fresh@example.com');
   assert.equal(result.user?.name, 'Alice');
   assert.ok(signedPayloads.some((p) => p.email === 'fresh@example.com'));
+});
+
+test('refreshToken 可连续轮换且旧令牌立即失效', async () => {
+  let currentRefreshToken = 'refresh-0';
+  let refreshSequence = 0;
+  const service = new AuthService(
+    {
+      async verify(token: string) {
+        if (token !== currentRefreshToken) throw new Error('invalid token');
+        return { sub: 'user-1', email: 'user@example.com', type: 'refresh' };
+      },
+      sign(payload: { type: string }) {
+        return payload.type === 'refresh'
+          ? `refresh-${++refreshSequence}`
+          : `access-${refreshSequence}`;
+      },
+    } as never,
+    {
+      async rotateRefreshToken(oldToken: string, _userId: string, newToken: string) {
+        assert.equal(oldToken, currentRefreshToken);
+        currentRefreshToken = newToken;
+      },
+    } as never,
+    {
+      async findOne() {
+        return { id: 'user-1', email: 'user@example.com', name: 'Alice' };
+      },
+    } as never,
+  );
+
+  const first = await service.refreshToken('refresh-0');
+  const second = await service.refreshToken(first.refresh_token);
+
+  assert.equal(first.refresh_token, 'refresh-1');
+  assert.equal(second.refresh_token, 'refresh-2');
+  await assert.rejects(() => service.refreshToken('refresh-0'));
 });

@@ -1,4 +1,5 @@
 import { apiClient } from '../client';
+
 import type { Folder, CreateFolderRequest, UpdateFolderRequest } from '@inkweaver/shared';
 
 export const folderApi = {

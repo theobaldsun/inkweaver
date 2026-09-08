@@ -9,25 +9,27 @@
  */
 
 import { Module } from "@nestjs/common";
-import { TypeOrmModule } from "@nestjs/typeorm";
 import { JwtModule } from "@nestjs/jwt";
+import { TypeOrmModule } from "@nestjs/typeorm";
 
+import { PasswordResetToken } from "./entity/password-reset-token.entity";
 import { User } from "./entity/user.entity";
+import { UserDataService } from "./user-data.service";
 import { UsersController } from "./users.controller";
 import { UsersService } from "./users.service";
-import { UserDataService } from "./user-data.service";
+import { getJwtModuleOptions } from '../../config/jwt.config';
+import { DocumentChunk } from '../ai/entity/document-chunk.entity';
+import { AuthPasswordController } from "../auth/auth-password.controller";
 import { AuthModule } from "../auth/auth.module";
-import { StorageModule } from "../storage/storage.module";
+import { Session } from "../auth/entity/session.entity";
 import { Document } from "../documents/entity/document.entity";
 import { Folder } from "../documents/entity/folder.entity";
-import { SearchHistory } from "../search/entity/search-history.entity";
-import { Session } from "../auth/entity/session.entity";
-import { SyncUpdate } from "../sync/entity/sync-update.entity";
-import { DocSnapshot } from "../sync/entity/doc-snapshot.entity";
-import { PasswordResetToken } from "./entity/password-reset-token.entity";
 import { MailModule } from "../mail/mail.module";
-import { AuthPasswordController } from "../auth/auth-password.controller";
-import { getJwtModuleOptions } from '../../config/jwt.config';
+import { Notification } from '../notifications/notification.entity';
+import { SearchHistory } from "../search/entity/search-history.entity";
+import { StorageModule } from "../storage/storage.module";
+import { DocSnapshot } from "../sync/entity/doc-snapshot.entity";
+import { SyncUpdate } from "../sync/entity/sync-update.entity";
 
 @Module({
   controllers: [UsersController, AuthPasswordController],
@@ -41,6 +43,8 @@ import { getJwtModuleOptions } from '../../config/jwt.config';
       SyncUpdate,
       DocSnapshot,
       PasswordResetToken,
+      DocumentChunk,
+      Notification,
     ]),
     StorageModule,
     MailModule,
@@ -51,4 +55,3 @@ import { getJwtModuleOptions } from '../../config/jwt.config';
   exports: [UsersService],
 })
 export class UsersModule {}
-

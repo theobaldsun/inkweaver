@@ -4,8 +4,9 @@
  */
 
 import 'reflect-metadata';
-import { DataSource } from 'typeorm';
 import { join } from 'path';
+
+import { DataSource } from 'typeorm';
 
 async function run(): Promise<void> {
   const dataSource = new DataSource({

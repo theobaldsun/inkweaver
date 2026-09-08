@@ -4,7 +4,6 @@
 
 import { documentApi, storageApi } from '@inkweaver/api';
 import { InkWeaverEditor } from '@inkweaver/editor-web';
-import { sanitizeDocumentHtml } from '../utils/sanitizeDocumentHtml';
 import { authService } from '@inkweaver/services';
 import {
   createPushThrottle,
@@ -36,6 +35,7 @@ import {
   syncEngine,
 } from '../services/syncService';
 import { getAssetUrl } from '../utils/assetUrl';
+import { sanitizeDocumentHtml } from '../utils/sanitizeDocumentHtml';
 
 /**
  * 将节流缓冲区内的 Yjs updates 立即落盘为 pending，避免切文档丢写。

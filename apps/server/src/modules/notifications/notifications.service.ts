@@ -5,6 +5,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
+
 import { Notification } from './notification.entity';
 
 @Injectable()

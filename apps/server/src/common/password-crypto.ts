@@ -3,8 +3,9 @@
  */
 
 import { createHash } from 'node:crypto';
-import * as bcrypt from 'bcrypt';
+
 import { isPasswordDigest } from '@inkweaver/shared';
+import * as bcrypt from 'bcrypt';
 
 /**
  * 将明文密码转为传输摘要（仅用于迁移脚本等管理场景）。

@@ -10,7 +10,7 @@ import test from "node:test";
 
 import { SearchService } from "./search.service";
 
-type SqlChannel = "exact" | "fuzzy" | "related";
+type SqlChannel = "exact" | "fuzzy" | "related" | "count";
 
 interface SqlCall {
   channel: SqlChannel;
@@ -34,9 +34,11 @@ interface HarnessOptions {
   semanticRows?: Array<{ docId: string; excerpt: string; sim: number }>;
   metadata?: MetadataDocument[];
   failChannel?: SqlChannel;
+  totalMatches?: number;
 }
 
 function sqlChannel(sql: string): SqlChannel {
+  if (sql.includes('"hybridTotal"')) return "count";
   if (sql.includes('"exactScore"')) return "exact";
   if (sql.includes('"matchedTermCount"')) return "fuzzy";
   if (sql.includes('"relatedScore"')) return "related";
@@ -63,6 +65,7 @@ function createHarness(options: HarnessOptions = {}) {
       const channel = sqlChannel(sql);
       sqlCalls.push({ channel, sql, params });
       if (options.failChannel === channel) throw new Error(`${channel} unavailable`);
+      if (channel === "count") return [{ hybridTotal: options.totalMatches ?? 0 }];
       if (channel === "exact") return options.exactRows ?? [];
       if (channel === "fuzzy") return options.fuzzyRows ?? [];
       return options.relatedRows ?? [];
@@ -208,4 +211,27 @@ test("分页基于去重后的文档集合计算 total/hasMore", async () => {
   assert.equal(result.page, 2);
   assert.equal(result.documents.length, 1);
   assert.equal(result.hasMore, false);
+});
+
+test("纯停用词不生成空数组标签匹配", async () => {
+  const harness = createHarness();
+  await harness.service.hybridSearch("user-1", "the", 1, 10, "keyword");
+  const exact = harness.sqlCalls.find((call) => call.channel === "exact");
+  assert.ok(exact);
+  assert.doesNotMatch(exact.sql, /tags @>/);
+  assert.deepEqual(exact.params, ["user-1", "the"]);
+});
+
+test("只有实际超过候选上限时才标记 truncated 且 total 保持真实总量", async () => {
+  const exactRows = Array.from({ length: 3001 }, (_, index) => ({
+    docId: `doc-${index}`,
+    title: `文档 ${index}`,
+    exactScore: 100,
+    exactHint: "命中标题",
+  }));
+  const harness = createHarness({ exactRows, metadata: [], totalMatches: 4123 });
+  const result = await harness.service.hybridSearch("user-1", "同步", 1, 10, "keyword");
+  assert.equal(result.truncated, true);
+  assert.equal(result.total, 4123);
+  assert.equal(result.hasMore, true);
 });

@@ -29,8 +29,8 @@ import { StorageUsageService } from '../storage/storage-usage.service';
 import { PullDto, PushDto, PullResponseDto } from './dto/push.dto';
 import { SyncUpdate } from './entity/sync-update.entity';
 import { SnapshotService } from './snapshot.service';
-import { SyncGateway } from './sync.gateway';
 import { assertValidSyncUpdates } from './sync-update.validation';
+import { SyncGateway } from './sync.gateway';
 import { getUserId } from '../../common/get-user-id';
 import { AuthGuard } from '../auth/guard/auth.guard';
 

@@ -5,19 +5,19 @@
  */
 
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
+import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { ObjectStorageService } from './object-storage.service';
+import { StorageAssetService } from './storage-asset.service';
+import { StorageUsageService } from './storage-usage.service';
+import { StorageController } from './storage.controller';
+import { getJwtModuleOptions } from '../../config/jwt.config';
 import { AuthModule } from '../auth/auth.module';
-import { User } from '../users/entity/user.entity';
 import { Document } from '../documents/entity/document.entity';
 import { Folder } from '../documents/entity/folder.entity';
-import { StorageController } from './storage.controller';
-import { StorageUsageService } from './storage-usage.service';
-import { StorageAssetService } from './storage-asset.service';
-import { ObjectStorageService } from './object-storage.service';
 import { NotificationsModule } from '../notifications/notifications.module';
-import { getJwtModuleOptions } from '../../config/jwt.config';
+import { User } from '../users/entity/user.entity';
 
 @Module({
   imports: [

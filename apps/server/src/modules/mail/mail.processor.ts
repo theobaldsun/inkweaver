@@ -3,16 +3,17 @@
  */
 
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger, ServiceUnavailableException } from '@nestjs/common';
-import { MailerService } from '@nestjs-modules/mailer';
+import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
+
+import { MailTransportService } from './mail-transport.service';
 import { MAIL_QUEUE, type SendMailJobPayload } from './mail.constants';
 
 @Processor(MAIL_QUEUE, { concurrency: 5 })
 export class MailProcessor extends WorkerHost {
   private readonly logger = new Logger(MailProcessor.name);
 
-  constructor(private readonly mailer: MailerService) {
+  constructor(private readonly mailer: MailTransportService) {
     super();
   }
 
@@ -22,16 +23,7 @@ export class MailProcessor extends WorkerHost {
   async process(job: Job<SendMailJobPayload>): Promise<void> {
     const { template, to, subject, context } = job.data;
 
-    if (!process.env.SMTP_HOST) {
-      throw new ServiceUnavailableException('邮件服务未配置（缺少 SMTP_HOST）');
-    }
-
-    await this.mailer.sendMail({
-      to,
-      subject,
-      template: `./${template}`,
-      context,
-    });
+    await this.mailer.send({ template, to, subject, context });
 
     this.logger.log(`Mail sent (${template}) to ${to}, jobId=${job.id}`);
   }

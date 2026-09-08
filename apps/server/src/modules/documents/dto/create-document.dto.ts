@@ -2,7 +2,7 @@
  * 创建文档请求 DTO
  */
 
-import { IsString, IsBoolean, IsOptional, IsArray, MaxLength, MinLength } from 'class-validator';
+import { IsString, IsBoolean, IsOptional, IsArray, IsUUID, MaxLength, MinLength } from 'class-validator';
 
 export class CreateDocumentDto {
   @IsString()
@@ -24,7 +24,7 @@ export class CreateDocumentDto {
   @IsOptional()
   tags?: string[];
 
-  @IsString()
+  @IsUUID()
   @IsOptional()
   folderId?: string;
 }

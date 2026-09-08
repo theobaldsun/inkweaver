@@ -8,8 +8,8 @@
  * 输出：经过验证/转换的 DTO 实例（ValidationPipe）
  */
 
-import { IsString } from "class-validator";
 import { ApiProperty } from '@nestjs/swagger';
+import { IsString } from "class-validator";
 
 export class RefreshTokenDto {
   /**

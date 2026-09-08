@@ -2,12 +2,15 @@
  * 个人中心页状态与 API 操作。
  */
 
+import { searchService } from '@inkweaver/services';
+import { DEFAULT_USER_SETTINGS, MIN_PASSWORD_LENGTH, isPasswordLengthValid } from '@inkweaver/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { User, UserSettings, UserSessionInfo } from '@inkweaver/shared';
-import { DEFAULT_USER_SETTINGS, MIN_PASSWORD_LENGTH, isPasswordLengthValid } from '@inkweaver/shared';
+
 import { authService, userService } from '../services/apiClient';
-import { searchService } from '@inkweaver/services';
+
+import type { User, UserSettings, UserSessionInfo } from '@inkweaver/shared';
+
 
 export type ProfileTabId =
   | 'account'

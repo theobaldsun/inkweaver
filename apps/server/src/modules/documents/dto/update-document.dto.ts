@@ -2,7 +2,7 @@
  * 更新文档请求 DTO
  */
 
-import { IsString, IsBoolean, IsOptional, IsArray, MaxLength, MinLength } from 'class-validator';
+import { IsString, IsBoolean, IsOptional, IsArray, IsUUID, MaxLength, MinLength, ValidateIf } from 'class-validator';
 
 export class UpdateDocumentDto {
   @IsString()
@@ -26,7 +26,8 @@ export class UpdateDocumentDto {
   @IsOptional()
   tags?: string[];
 
-  @IsString()
+  @ValidateIf((_object, value) => value !== null)
+  @IsUUID()
   @IsOptional()
-  folderId?: string;
+  folderId?: string | null;
 }

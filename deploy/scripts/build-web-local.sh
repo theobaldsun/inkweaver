@@ -22,7 +22,7 @@ if [ "$#" -gt 1 ]; then
   exit 2
 fi
 
-for command_name in node pnpm; do
+for command_name in node pnpm sha256sum; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
     echo "缺少命令：$command_name。请先在开发机安装项目要求的 Node.js/pnpm 环境。" >&2
     exit 1
@@ -54,8 +54,15 @@ if [ ! -d "$DIST/assets" ] || ! find "$DIST/assets" -type f -print -quit | grep 
   exit 1
 fi
 
+if grep -R -F "http://localhost:3000/api" "$DIST" >/dev/null 2>&1; then
+  echo "构建失败：生产产物包含禁止的 http://localhost:3000/api" >&2
+  exit 1
+fi
+
 FILE_COUNT="$(find "$DIST" -type f | wc -l | tr -d '[:space:]')"
 DIST_SIZE="$(du -sh "$DIST" | awk '{print $1}')"
+INDEX_SHA="$(sha256sum "$DIST/index.html" | awk '{print $1}')"
 
 echo "==> Web 构建完成：apps/web/dist（${FILE_COUNT} 个文件，${DIST_SIZE}）"
+echo "==> index.html SHA-256：${INDEX_SHA}；禁止 API 地址命中数：0"
 echo "==> 部署示例：bash deploy/scripts/deploy-web.sh user@your-ecs /path/to/key.pem"

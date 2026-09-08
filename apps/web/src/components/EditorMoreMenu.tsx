@@ -2,8 +2,8 @@
  * 编辑器「更多」下拉菜单：链接、导出、公开状态、分享链接。
  */
 
-import React, { useEffect, useRef, useState } from 'react';
 import { MoreHorizontal, Link2, Download, Globe, Share2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
 
 export interface EditorMoreMenuProps {
   docId?: string;

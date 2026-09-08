@@ -2,11 +2,11 @@
  * 通过邮件链接重置密码。
  */
 
+import { authApi, getApiErrorMessage } from '@inkweaver/api';
+import { MIN_PASSWORD_LENGTH, isPasswordLengthValid } from '@inkweaver/shared';
+import { Lock, Eye, EyeOff } from 'lucide-react';
 import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { MIN_PASSWORD_LENGTH, isPasswordLengthValid } from '@inkweaver/shared';
-import { authApi, getApiErrorMessage } from '@inkweaver/api';
-import { Lock, Eye, EyeOff } from 'lucide-react';
 import '../styles/auth.css';
 
 export const ResetPasswordPage: React.FC = () => {

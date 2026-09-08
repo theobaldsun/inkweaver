@@ -2,17 +2,18 @@
  * 个人中心页面。
  */
 
+import { User, Settings, HelpCircle, Shield, Bell, BarChart3 } from 'lucide-react';
 import React, { useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { User, Settings, HelpCircle, Shield, Bell, BarChart3 } from 'lucide-react';
-import { useProfilePage, type ProfileTabId } from '../hooks/useProfilePage';
-import { ProfileHeader } from '../components/profile/ProfileHeader';
+
 import { ProfileAccountTab } from '../components/profile/ProfileAccountTab';
+import { ProfileAppTab } from '../components/profile/ProfileAppTab';
+import { ProfileHeader } from '../components/profile/ProfileHeader';
+import { ProfileHelpTab } from '../components/profile/ProfileHelpTab';
 import { ProfileNotificationsTab } from '../components/profile/ProfileNotificationsTab';
 import { ProfilePrivacyTab } from '../components/profile/ProfilePrivacyTab';
 import { ProfileStorageTab } from '../components/profile/ProfileStorageTab';
-import { ProfileAppTab } from '../components/profile/ProfileAppTab';
-import { ProfileHelpTab } from '../components/profile/ProfileHelpTab';
+import { useProfilePage, type ProfileTabId } from '../hooks/useProfilePage';
 
 const TABS: { id: ProfileTabId; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
   { id: 'account', label: '账户设置', icon: User },

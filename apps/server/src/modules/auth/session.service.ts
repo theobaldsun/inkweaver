@@ -10,10 +10,11 @@
  * 输出：会话记录、验证结果
  */
 
+import { createHash } from "crypto";
+
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import * as bcrypt from "bcrypt";
-import { createHash } from "crypto";
 import { LessThan, MoreThan, IsNull, Repository } from "typeorm";
 
 import { Session, SessionStatus } from "./entity/session.entity";
@@ -120,13 +121,93 @@ export class SessionService {
   }
 
   /**
+   * 原子轮换刷新令牌。
+   *
+   * 先按旧 lookup 定位并校验 bcrypt，再以旧 lookup 作为条件写入新哈希、lookup 和
+   * 有效期。并发请求即使同时通过 JWT 校验，也只有一个能消费旧令牌。
+   */
+  async rotateRefreshToken(
+    refreshToken: string,
+    userId: string,
+    newRefreshToken: string,
+  ): Promise<Session> {
+    const oldLookup = createHash('sha256').update(refreshToken).digest('hex');
+    const newLookup = createHash('sha256').update(newRefreshToken).digest('hex');
+    const newHash = await bcrypt.hash(newRefreshToken, 10);
+    const now = new Date();
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+    return this.sessionRepository.manager.transaction(async (manager) => {
+      let session = await manager.findOne(Session, {
+        where: {
+          userId,
+          status: SessionStatus.ACTIVE,
+          expiresAt: MoreThan(now),
+          refreshTokenLookup: oldLookup,
+        },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      let legacy = false;
+      if (!session) {
+        // 历史行没有 lookup；条件更新仍会保证并发时只能有一个请求完成轮换。
+        const legacySessions = await manager.find(Session, {
+          where: {
+            userId,
+            status: SessionStatus.ACTIVE,
+            expiresAt: MoreThan(now),
+            refreshTokenLookup: IsNull(),
+          },
+        });
+        for (const candidate of legacySessions) {
+          if (await bcrypt.compare(refreshToken, candidate.refreshTokenHash)) {
+            session = candidate;
+            legacy = true;
+            break;
+          }
+        }
+      }
+
+      if (!session || !(await bcrypt.compare(refreshToken, session.refreshTokenHash))) {
+        throw new UnauthorizedException('无效的刷新令牌');
+      }
+
+      const result = await manager.update(
+        Session,
+        {
+          id: session.id,
+          userId,
+          status: SessionStatus.ACTIVE,
+          refreshTokenLookup: legacy ? IsNull() : oldLookup,
+        },
+        {
+          refreshTokenHash: newHash,
+          refreshTokenLookup: newLookup,
+          expiresAt,
+          lastActivityAt: now,
+        },
+      );
+      if (result.affected !== 1) {
+        throw new UnauthorizedException('刷新令牌已被使用');
+      }
+
+      return Object.assign(session, {
+        refreshTokenHash: newHash,
+        refreshTokenLookup: newLookup,
+        expiresAt,
+        lastActivityAt: now,
+      });
+    });
+  }
+
+  /**
    * 检查会话是否有效（应用启动时使用）
    */
   async checkSessionValidity(userId: string, refreshToken: string): Promise<{ isValid: boolean; session?: Session }> {
     try {
       const session = await this.validateRefreshToken(refreshToken, userId);
       return { isValid: true, session };
-    } catch (error) {
+    } catch {
       return { isValid: false };
     }
   }

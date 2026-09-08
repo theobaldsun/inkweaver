@@ -2,14 +2,17 @@
  * 笔记列表页：文件夹导航、筛选、排序与分页。
  */
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { FileText, PlusCircle, List, Grid3X3, Trash2, Calendar, Loader2, Folder, Move, ChevronRight, Home } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { documentService } from '../services/apiClient';
-import { useFolders } from '../contexts/FolderContext';
-import CustomModal, { showAlert } from '../components/CustomModal';
-import type { Document, Folder as FolderType } from '@inkweaver/shared';
 import { TRASH_RETENTION_DAYS } from '@inkweaver/shared';
+import { FileText, PlusCircle, List, Grid3X3, Trash2, Calendar, Loader2, Folder, Move, ChevronRight, Home } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+
+import CustomModal, { showAlert } from '../components/CustomModal';
+import { useFolders } from '../contexts/FolderContext';
+import { documentService } from '../services/apiClient';
+
+import type { Document, Folder as FolderType } from '@inkweaver/shared';
+
 
 type ListFilter = 'all' | 'recent' | 'mine' | 'shared';
 
@@ -25,6 +28,7 @@ const NoteListPage: React.FC = () => {
   const { folders, refreshFolders } = useFolders();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [loading, setLoading] = useState(true);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -43,6 +47,8 @@ const NoteListPage: React.FC = () => {
     noteTitle: '',
     targetFolderId: null,
   });
+  /** 仅允许最后发起的列表请求提交状态，防止旧响应覆盖新筛选结果。 */
+  const loadRequestIdRef = useRef(0);
 
   const mapListFilter = (filter: ListFilter): 'all' | 'recent' | 'mine' | 'public' => {
     if (filter === 'shared') return 'public';
@@ -52,6 +58,7 @@ const NoteListPage: React.FC = () => {
   };
 
   const loadNotes = useCallback(async () => {
+    const requestId = ++loadRequestIdRef.current;
     try {
       setLoading(true);
       setLoadError('');
@@ -65,15 +72,20 @@ const NoteListPage: React.FC = () => {
         folderId,
         apiFilter,
       );
+      if (requestId !== loadRequestIdRef.current) return;
       setNotes(response.documents);
       setTotal(response.total);
     } catch (error) {
+      if (requestId !== loadRequestIdRef.current) return;
       console.error('Failed to load notes:', error);
       setNotes([]);
       setTotal(0);
       setLoadError(error instanceof Error ? error.message : '加载文档列表失败');
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestIdRef.current) {
+        setLoading(false);
+        setInitialLoadComplete(true);
+      }
     }
   }, [activeFilter, sortBy, sortOrder, currentFolderId, page]);
 
@@ -123,25 +135,6 @@ const NoteListPage: React.FC = () => {
     return path;
   }, [currentFolderId, folders]);
 
-  const getCurrentFolderName = useMemo(() => {
-    if (!currentFolderId) return '根目录';
-    if (!folders) return '根目录';
-
-    const findFolder = (folderList: FolderItem[], targetId: string): FolderItem | null => {
-      for (const folder of folderList) {
-        if (folder.id === targetId) return folder;
-        if (folder.children) {
-          const found = findFolder(folder.children, targetId);
-          if (found) return found;
-        }
-      }
-      return null;
-    };
-
-    const folder = findFolder(folders, currentFolderId);
-    return folder?.name || '根目录';
-  }, [currentFolderId, folders]);
-
   const currentLevelFolders = useMemo(() => {
     if (!folders) return [];
 
@@ -166,31 +159,6 @@ const NoteListPage: React.FC = () => {
     setCurrentFolderId(folderId);
   };
 
-  const handleNavigateToParent = () => {
-    if (!currentFolderId || !folders) {
-      setCurrentFolderId(null);
-      return;
-    }
-
-    const findFolder = (folderList: FolderItem[], targetId: string): FolderItem | null => {
-      for (const folder of folderList) {
-        if (folder.id === targetId) return folder;
-        if (folder.children) {
-          const found = findFolder(folder.children, targetId);
-          if (found) return found;
-        }
-      }
-      return null;
-    };
-
-    const currentFolder = findFolder(folders, currentFolderId);
-    if (currentFolder?.parentId) {
-      setCurrentFolderId(currentFolder.parentId);
-    } else {
-      setCurrentFolderId(null);
-    }
-  };
-
   const handleNavigateToRoot = () => {
     setCurrentFolderId(null);
   };
@@ -210,7 +178,7 @@ const NoteListPage: React.FC = () => {
 
   const confirmMove = async () => {
     try {
-      const targetFolderId = moveConfirm.targetFolderId || undefined;
+      const targetFolderId = moveConfirm.targetFolderId;
       await documentService.updateDocument(moveConfirm.noteId, { folderId: targetFolderId });
       setNotes(prev => prev.map(note => 
         note.id === moveConfirm.noteId 
@@ -301,7 +269,7 @@ const NoteListPage: React.FC = () => {
     return dateString.split('T')[0];
   };
 
-  if (loading) {
+  if (loading && !initialLoadComplete) {
     return (
       <div className="notes-page">
         <div className="loading-container">

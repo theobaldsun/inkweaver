@@ -91,12 +91,14 @@ export interface HybridSearchResult {
   pageSize: number;
   /** 是否还有下一页 */
   hasMore: boolean;
-  /** 是否触发召回上限截断（total >= 3000），提示用户加关键词缩小范围 */
+  /** 是否触发召回上限截断，提示用户加关键词缩小范围 */
   truncated: boolean;
 }
 
 /** 加权常量（对应设计文档第 8 节问题 3 选 A：T1-T3 阶段 hardcode，T4 后迁配置表） */
 const WEIGHTS = { exact: 1.0, fuzzy: 0.8, related: 0.5, semantic: 0.9, recency: 0.05 } as const;
+/** 每路多取 1 条用于精确判断是否发生候选截断。 */
+const MAX_SEARCH_CANDIDATES = 3000;
 
 @Injectable()
 export class SearchService {
@@ -120,17 +122,17 @@ export class SearchService {
     keyword: string,
     mode: 'smart' | 'keyword' | 'semantic' = 'smart',
   ): Promise<SearchHistory> {
-    const existing = await this.searchHistoryRepository.findOne({ where: { userId, keyword } });
-    if (existing) {
-      existing.count += 1;
-      existing.updatedAt = new Date();
-      // 同一关键词再次搜索时，覆盖为最新使用的模式
-      existing.mode = mode;
-      return this.searchHistoryRepository.save(existing);
-    }
-    return this.searchHistoryRepository.save(
-      this.searchHistoryRepository.create({ userId, keyword, count: 1, mode }),
+    const rows: SearchHistory[] = await this.searchHistoryRepository.query(
+      `INSERT INTO search_history ("userId", keyword, count, mode, "createdAt", "updatedAt")
+       VALUES ($1, $2, 1, $3, NOW(), NOW())
+       ON CONFLICT ("userId", keyword)
+       DO UPDATE SET count = search_history.count + 1,
+                     mode = EXCLUDED.mode,
+                     "updatedAt" = NOW()
+       RETURNING *`,
+      [userId, keyword, mode],
     );
+    return this.searchHistoryRepository.create(rows[0]!);
   }
   async getSearchHistory(userId: string, limit: number = 10): Promise<SearchHistory[]> {
     return this.searchHistoryRepository.find({ where: { userId }, order: { updatedAt: 'DESC' }, take: limit });
@@ -178,18 +180,26 @@ export class SearchService {
     keyword: string,
     tokens: string[],
   ): Promise<Array<{ docId: string; title: string; exactScore: number; exactHint: string }>> {
+    const tagScore = tokens.length > 0
+      ? `WHEN tags @> to_jsonb($3::varchar[]) THEN 90`
+      : '';
+    const tagFilter = tokens.length > 0
+      ? `OR tags @> to_jsonb($3::varchar[])`
+      : '';
     const rows = await this.dataSource.query(
       `SELECT id AS "docId", title,
           CASE
             WHEN title = $2 THEN 100
             WHEN title ILIKE $2 THEN 95
-            WHEN tags @> to_jsonb($3::varchar[]) THEN 90
+            ${tagScore}
             ELSE 0 END AS "exactScore",
           '命中标题' AS "exactHint"
        FROM documents
        WHERE "userId" = $1 AND "deletedAt" IS NULL
-         AND (title = $2 OR title ILIKE $2 OR tags @> to_jsonb($3::varchar[]))`,
-      [userId, keyword, tokens],
+         AND (title = $2 OR title ILIKE $2 ${tagFilter})
+       ORDER BY "exactScore" DESC, id ASC
+       LIMIT ${MAX_SEARCH_CANDIDATES + 1}`,
+      tokens.length > 0 ? [userId, keyword, tokens] : [userId, keyword],
     );
     return rows.map((r: Record<string, unknown>) => ({
       docId: r.docId as string,
@@ -219,7 +229,7 @@ export class SearchService {
        WHERE "userId" = $1 AND "deletedAt" IS NULL
          AND "docTsv" @@ plainto_tsquery('simple', $2)
        ORDER BY "fuzzyScore" DESC
-       LIMIT 500`,
+       LIMIT ${MAX_SEARCH_CANDIDATES + 1}`,
       [userId, keyword],
     );
     return rows.map((r: Record<string, unknown>) => ({
@@ -261,7 +271,7 @@ export class SearchService {
        ) t
        WHERE "relatedScore" > 0
        ORDER BY "relatedScore" DESC
-       LIMIT 1000`,
+       LIMIT ${MAX_SEARCH_CANDIDATES + 1}`,
       [userId, null, year, month, tags, folderId],
     );
     return rows.map((r: Record<string, unknown>) => ({
@@ -283,6 +293,58 @@ export class SearchService {
       similarity: h.sim,
       semanticScore: h.sim * 80,
     }));
+  }
+
+  /**
+   * 候选被截断时单独计算未截断的文档级并集总数。
+   * 这里只计数，不加载正文或分数；语义通道以 VectorStore 实际返回的候选集合为准。
+   */
+  private async countHybridMatches(
+    userId: string,
+    keyword: string,
+    tokens: string[],
+    entities: SearchEntities,
+    mode: 'smart' | 'keyword' | 'semantic',
+    semanticDocIds: string[],
+  ): Promise<number> {
+    const params: unknown[] = [userId];
+    const bind = (value: unknown): string => {
+      params.push(value);
+      return `$${params.length}`;
+    };
+    const keywordRef = bind(keyword);
+    const conditions = [
+      `title = ${keywordRef}`,
+      `title ILIKE ${keywordRef}`,
+    ];
+    const tokensRef = tokens.length > 0 ? bind(tokens) : null;
+    if (tokensRef) conditions.push(`tags @> to_jsonb(${tokensRef}::varchar[])`);
+    if (mode !== 'semantic') {
+      conditions.push(`"docTsv" @@ plainto_tsquery('simple', ${keywordRef})`);
+    }
+    if (mode === 'smart') {
+      if (entities.year !== null) {
+        conditions.push(`EXTRACT(YEAR FROM "createdAt") = ${bind(entities.year)}::int`);
+      }
+      if (entities.month !== null) {
+        conditions.push(`EXTRACT(MONTH FROM "createdAt") = ${bind(entities.month)}::int`);
+      }
+      if (tokensRef) conditions.push(`tags ?| ${tokensRef}::varchar[]`);
+      if (entities.folderId) conditions.push(`"folderId" = ${bind(entities.folderId)}::uuid`);
+      conditions.push(`"lastOpenedAt" > NOW() - INTERVAL '7 days'`);
+    }
+    if (mode !== 'keyword' && semanticDocIds.length > 0) {
+      conditions.push(`id = ANY(${bind(semanticDocIds)}::uuid[])`);
+    }
+
+    const rows: Array<{ hybridTotal: string | number }> = await this.dataSource.query(
+      `SELECT COUNT(*)::int AS "hybridTotal"
+       FROM documents
+       WHERE "userId" = $1 AND "deletedAt" IS NULL
+         AND (${conditions.join(' OR ')})`,
+      params,
+    );
+    return Number(rows[0]?.hybridTotal ?? 0);
   }
 
     /**
@@ -320,7 +382,7 @@ export class SearchService {
     const useSemantic = mode !== 'keyword';
 
     // 2. 四路并行；单路异常会记录通道名称并降级为空，不拖垮其余结果。
-    const [exact, fuzzy, related, semantic] = await Promise.all([
+    const [exactCandidates, fuzzyCandidates, relatedCandidates, semanticCandidates] = await Promise.all([
       useExact
         ? this.runChannel('exact', () => this.searchExact(userId, keyword, tokens))
         : Promise.resolve([]),
@@ -334,6 +396,16 @@ export class SearchService {
         ? this.runChannel('semantic', () => this.searchSemantic(userId, keyword))
         : Promise.resolve([]),
     ]);
+    const candidateTruncated = [
+      exactCandidates,
+      fuzzyCandidates,
+      relatedCandidates,
+      semanticCandidates,
+    ].some((rows) => rows.length > MAX_SEARCH_CANDIDATES);
+    const exact = exactCandidates.slice(0, MAX_SEARCH_CANDIDATES);
+    const fuzzy = fuzzyCandidates.slice(0, MAX_SEARCH_CANDIDATES);
+    const related = relatedCandidates.slice(0, MAX_SEARCH_CANDIDATES);
+    const semantic = semanticCandidates.slice(0, MAX_SEARCH_CANDIDATES);
 
     // 3. Map<docId, MergedDocScore> 合并
     const merged = new Map<string, MergedDocScore>();
@@ -376,7 +448,16 @@ export class SearchService {
     const allDocs = await this.populateDocMetadata([...merged.values()], userId);
     allDocs.sort((a, b) => scorer(b) - scorer(a));
 
-    const total = allDocs.length;
+    const total = candidateTruncated
+      ? await this.countHybridMatches(
+          userId,
+          keyword,
+          tokens,
+          entities,
+          mode,
+          semanticCandidates.map((candidate) => candidate.docId),
+        )
+      : allDocs.length;
     const start = (page - 1) * pageSize;
     const pageDocs = allDocs.slice(start, start + pageSize);
     const maxScore = pageDocs.length > 0 ? scorer(pageDocs[0]!) : 1;
@@ -397,8 +478,8 @@ export class SearchService {
       total,
       page,
       pageSize,
-      hasMore: start + pageSize < total,
-      truncated: total >= 3000,
+      hasMore: start + pageSize < allDocs.length,
+      truncated: candidateTruncated,
     };
   }
 

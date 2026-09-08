@@ -2,16 +2,22 @@
  * 公开鉴权相关接口：忘记密码、重置密码。
  */
 
+import { createHash, randomBytes } from 'crypto';
+
+import { PASSWORD_DIGEST_REGEX } from '@inkweaver/shared';
 import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
 import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
-import { createHash, randomBytes } from 'crypto';
-import { UsersService } from '../users/users.service';
-import { PasswordResetToken } from '../users/entity/password-reset-token.entity';
-import { MailDispatchService } from '../mail/mail-dispatch.service';
-import { PASSWORD_DIGEST_REGEX } from '@inkweaver/shared';
 import { IsEmail, IsString, Matches } from 'class-validator';
+import { IsNull, MoreThan, Repository } from 'typeorm';
+
+import { MailDispatchService } from '../mail/mail-dispatch.service';
+import { Session, SessionStatus } from './entity/session.entity';
+import { hashDigestForStorage } from '../../common/password-crypto';
+import { PasswordResetToken } from '../users/entity/password-reset-token.entity';
+import { User } from '../users/entity/user.entity';
+import { UsersService } from '../users/users.service';
+
 
 class ForgotPasswordDto {
   @IsEmail()
@@ -47,14 +53,23 @@ export class AuthPasswordController {
       const tokenHash = createHash('sha256').update(plainToken).digest('hex');
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
-      await this.resetRepo.save(
-        this.resetRepo.create({
-          userId: user.id,
-          tokenHash,
-          expiresAt,
-          usedAt: null,
-        }),
-      );
+      await this.resetRepo.manager.transaction(async (manager) => {
+        // 仅保留最新重置链接有效，避免旧邮件在新申请后仍可修改密码。
+        await manager.update(
+          PasswordResetToken,
+          { userId: user.id, usedAt: IsNull(), expiresAt: MoreThan(new Date()) },
+          { usedAt: new Date() },
+        );
+        await manager.save(
+          PasswordResetToken,
+          manager.create(PasswordResetToken, {
+            userId: user.id,
+            tokenHash,
+            expiresAt,
+            usedAt: null,
+          }),
+        );
+      });
 
       const base = process.env.APP_PUBLIC_URL ?? 'http://localhost:3003';
       const resetUrl = `${base}/reset-password?token=${plainToken}`;
@@ -71,17 +86,36 @@ export class AuthPasswordController {
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   async resetPassword(@Body() dto: ResetPasswordDto) {
     const tokenHash = createHash('sha256').update(dto.token).digest('hex');
-    const row = await this.resetRepo.findOne({
-      where: { tokenHash, usedAt: IsNull() },
+    const password = await hashDigestForStorage(dto.passwordHash);
+    const consumed = await this.resetRepo.manager.transaction(async (manager) => {
+      const now = new Date();
+      const result = await manager
+        .createQueryBuilder()
+        .update(PasswordResetToken)
+        .set({ usedAt: now })
+        .where('"tokenHash" = :tokenHash', { tokenHash })
+        .andWhere('"usedAt" IS NULL')
+        .andWhere('"expiresAt" > :now', { now })
+        .returning(['userId'])
+        .execute();
+      const userId = (result.raw[0] as { userId?: string } | undefined)?.userId;
+      if (!userId) return false;
+
+      const userResult = await manager.update(User, { id: userId }, { password });
+      if (userResult.affected !== 1) {
+        throw new Error('密码重置用户不存在');
+      }
+      await manager.update(
+        Session,
+        { userId, status: SessionStatus.ACTIVE },
+        { status: SessionStatus.REVOKED },
+      );
+      return true;
     });
 
-    if (!row || row.expiresAt < new Date()) {
+    if (!consumed) {
       return { message: '链接无效或已过期，请重新申请重置。', success: false };
     }
-
-    await this.usersService.setPasswordFromReset(row.userId, dto.passwordHash);
-    row.usedAt = new Date();
-    await this.resetRepo.save(row);
 
     return { message: '密码已重置，请使用新密码登录。', success: true };
   }

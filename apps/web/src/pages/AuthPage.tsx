@@ -2,60 +2,60 @@
  * 登录 / 注册页
  */
 
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import type { LoginRequest, RegisterRequest } from '@inkweaver/shared';
-import { MIN_PASSWORD_LENGTH, isPasswordLengthValid } from '@inkweaver/shared';
-import { authApi, getApiErrorMessage } from '@inkweaver/api';
-import { authService } from '@inkweaver/services';
-import { platformAdapter } from '../adapters/platformAdapter';
-import { PlatformAdapterProvider } from '@inkweaver/ui';
-import { FileText, Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react';
-import { showAlert } from '../components/CustomModal';
-import '../styles/auth.css';
+import { authApi, getApiErrorMessage } from "@inkweaver/api";
+import { authService } from "@inkweaver/services";
+import { MIN_PASSWORD_LENGTH, isPasswordLengthValid } from "@inkweaver/shared";
+import { PlatformAdapterProvider } from "@inkweaver/ui";
+import { FileText, Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle } from "lucide-react";
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+
+import { platformAdapter } from "../adapters/platformAdapter";
+
+import type { LoginRequest, RegisterRequest } from "@inkweaver/shared";
 
 export const AuthPage: React.FC = () => {
   const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [loginData, setLoginData] = useState<LoginRequest>({
-    email: '',
-    password: '',
+    email: "",
+    password: "",
   });
 
   const [registerData, setRegisterData] = useState<RegisterRequest>({
-    email: '',
-    password: '',
-    name: '',
+    email: "",
+    password: "",
+    name: "",
   });
 
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [forgotEmail, setForgotEmail] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [forgotEmail, setForgotEmail] = useState("");
   const [showForgot, setShowForgot] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
 
   const switchMode = (login: boolean) => {
     setIsLogin(login);
-    setError('');
+    setError("");
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
+    setError("");
 
     try {
       const response = await authService.login(loginData);
       await authService.saveTokens(response, response.user.id);
       await authService.saveRememberMe(rememberMe);
-      navigate('/');
+      navigate("/");
     } catch (err) {
-      setError(getApiErrorMessage(err, '登录失败，请重试'));
+      setError(getApiErrorMessage(err, "登录失败，请重试"));
     } finally {
       setLoading(false);
     }
@@ -65,19 +65,19 @@ export const AuthPage: React.FC = () => {
     e.preventDefault();
 
     if (registerData.password !== confirmPassword) {
-      setError('两次输入的密码不一致');
+      setError("两次输入的密码不一致");
       return;
     }
 
     setLoading(true);
-    setError('');
+    setError("");
 
     try {
       const response = await authService.register(registerData);
       await authService.saveTokens(response, response.user.id);
-      navigate('/');
+      navigate("/");
     } catch (err) {
-      setError(getApiErrorMessage(err, '注册失败，请重试'));
+      setError(getApiErrorMessage(err, "注册失败，请重试"));
     } finally {
       setLoading(false);
     }
@@ -86,12 +86,12 @@ export const AuthPage: React.FC = () => {
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
+    setError("");
     try {
       await authApi.forgotPassword(forgotEmail.trim());
       setForgotSent(true);
     } catch (err) {
-      setError(getApiErrorMessage(err, '发送失败，请稍后重试'));
+      setError(getApiErrorMessage(err, "发送失败，请稍后重试"));
     } finally {
       setLoading(false);
     }
@@ -101,8 +101,8 @@ export const AuthPage: React.FC = () => {
   const isRegisterValid =
     Boolean(
       registerData.email &&
-        isPasswordLengthValid(registerData.password) &&
-        registerData.name.trim(),
+      isPasswordLengthValid(registerData.password) &&
+      registerData.name.trim(),
     ) &&
     isPasswordLengthValid(confirmPassword) &&
     registerData.password === confirmPassword;
@@ -113,7 +113,7 @@ export const AuthPage: React.FC = () => {
       className="auth-field__toggle"
       onClick={onToggle}
       tabIndex={-1}
-      aria-label={visible ? '隐藏密码' : '显示密码'}
+      aria-label={visible ? "隐藏密码" : "显示密码"}
     >
       {visible ? <EyeOff size={18} /> : <Eye size={18} />}
     </button>
@@ -150,9 +150,9 @@ export const AuthPage: React.FC = () => {
             </div>
 
             <div className="auth-header">
-              <h2 className="auth-title">{isLogin ? '欢迎回来' : '创建账号'}</h2>
+              <h2 className="auth-title">{isLogin ? "欢迎回来" : "创建账号"}</h2>
               <p className="auth-subtitle">
-                {isLogin ? '登录以继续使用你的笔记与文档' : '注册后即可开始使用 InkWeaver'}
+                {isLogin ? "登录以继续使用你的笔记与文档" : "注册后即可开始使用 InkWeaver"}
               </p>
             </div>
 
@@ -161,7 +161,7 @@ export const AuthPage: React.FC = () => {
                 type="button"
                 role="tab"
                 aria-selected={isLogin}
-                className={`auth-tab ${isLogin ? 'active' : ''}`}
+                className={`auth-tab ${isLogin ? "active" : ""}`}
                 onClick={() => switchMode(true)}
                 disabled={loading}
               >
@@ -171,7 +171,7 @@ export const AuthPage: React.FC = () => {
                 type="button"
                 role="tab"
                 aria-selected={!isLogin}
-                className={`auth-tab ${!isLogin ? 'active' : ''}`}
+                className={`auth-tab ${!isLogin ? "active" : ""}`}
                 onClick={() => switchMode(false)}
                 disabled={loading}
               >
@@ -215,8 +215,12 @@ export const AuthPage: React.FC = () => {
                     />
                   </div>
                 </div>
-                <button type="submit" className="auth-submit" disabled={loading || forgotSent || !forgotEmail}>
-                  {forgotSent ? '邮件已发送' : loading ? '发送中…' : '发送重置邮件'}
+                <button
+                  type="submit"
+                  className="auth-submit"
+                  disabled={loading || forgotSent || !forgotEmail}
+                >
+                  {forgotSent ? "邮件已发送" : loading ? "发送中…" : "发送重置邮件"}
                 </button>
                 <button
                   type="button"
@@ -224,7 +228,7 @@ export const AuthPage: React.FC = () => {
                   onClick={() => {
                     setShowForgot(false);
                     setForgotSent(false);
-                    setError('');
+                    setError("");
                   }}
                 >
                   返回登录
@@ -264,7 +268,7 @@ export const AuthPage: React.FC = () => {
                     </span>
                     <input
                       id="login-password"
-                      type={showPassword ? 'text' : 'password'}
+                      type={showPassword ? "text" : "password"}
                       className="auth-field__input"
                       value={loginData.password}
                       onChange={(e) => setLoginData((p) => ({ ...p, password: e.target.value }))}
@@ -295,7 +299,7 @@ export const AuthPage: React.FC = () => {
                     onClick={() => {
                       setForgotEmail(loginData.email);
                       setShowForgot(true);
-                      setError('');
+                      setError("");
                     }}
                   >
                     忘记密码？
@@ -304,7 +308,7 @@ export const AuthPage: React.FC = () => {
 
                 <button type="submit" className="auth-submit" disabled={loading || !isLoginValid}>
                   {loading && <span className="auth-submit__spinner" />}
-                  {loading ? '登录中…' : '登录'}
+                  {loading ? "登录中…" : "登录"}
                 </button>
               </form>
             ) : (
@@ -363,7 +367,7 @@ export const AuthPage: React.FC = () => {
                     </span>
                     <input
                       id="register-password"
-                      type={showPassword ? 'text' : 'password'}
+                      type={showPassword ? "text" : "password"}
                       className="auth-field__input"
                       value={registerData.password}
                       onChange={(e) => setRegisterData((p) => ({ ...p, password: e.target.value }))}
@@ -387,7 +391,7 @@ export const AuthPage: React.FC = () => {
                     </span>
                     <input
                       id="register-confirm"
-                      type={showConfirmPassword ? 'text' : 'password'}
+                      type={showConfirmPassword ? "text" : "password"}
                       className="auth-field__input"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
@@ -397,13 +401,19 @@ export const AuthPage: React.FC = () => {
                       minLength={MIN_PASSWORD_LENGTH}
                       disabled={loading}
                     />
-                    {renderPasswordToggle(showConfirmPassword, () => setShowConfirmPassword((v) => !v))}
+                    {renderPasswordToggle(showConfirmPassword, () =>
+                      setShowConfirmPassword((v) => !v),
+                    )}
                   </div>
                 </div>
 
-                <button type="submit" className="auth-submit" disabled={loading || !isRegisterValid}>
+                <button
+                  type="submit"
+                  className="auth-submit"
+                  disabled={loading || !isRegisterValid}
+                >
                   {loading && <span className="auth-submit__spinner" />}
-                  {loading ? '注册中…' : '注册并登录'}
+                  {loading ? "注册中…" : "注册并登录"}
                 </button>
               </form>
             )}
@@ -428,14 +438,14 @@ export const AuthPage: React.FC = () => {
 
             <div className="auth-footer">
               <p>
-                {isLogin ? '还没有账号？' : '已有账号？'}
+                {isLogin ? "还没有账号？" : "已有账号？"}
                 <button
                   type="button"
                   className="auth-link-btn"
                   onClick={() => switchMode(!isLogin)}
                   disabled={loading}
                 >
-                  {isLogin ? '立即注册' : '立即登录'}
+                  {isLogin ? "立即注册" : "立即登录"}
                 </button>
               </p>
             </div>

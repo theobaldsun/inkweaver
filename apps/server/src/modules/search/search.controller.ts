@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Delete, Query, Request, UseGuards } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
+import { AddSearchHistoryDto, SearchHistoryKeywordDto, SearchHistoryLimitDto } from './dto/search-history.dto';
 import { SearchHybridDto } from "./dto/search.dto";
 import { SearchService } from "./search.service";
 import { AuthGuard } from "../auth/guard/auth.guard";
@@ -18,10 +19,10 @@ export class SearchController {
   @Get("/history")
   async getSearchHistory(
     @Request() req: { user?: { sub: string } },
-    @Query("limit") limit: number = 10,
+    @Query() query: SearchHistoryLimitDto,
   ) {
     const userId = req.user!.sub;
-    const history = await this.searchService.getSearchHistory(userId, limit);
+    const history = await this.searchService.getSearchHistory(userId, query.limit);
     return {
       history: history.map((h) => ({
         keyword: h.keyword,
@@ -38,11 +39,10 @@ export class SearchController {
   @Post("/history")
   async addSearchHistory(
     @Request() req: { user?: { sub: string } },
-    @Query("keyword") keyword: string,
-    @Query("mode") mode: 'smart' | 'keyword' | 'semantic' = 'smart',
+    @Query() query: AddSearchHistoryDto,
   ) {
     const userId = req.user!.sub;
-    await this.searchService.addSearchHistory(userId, keyword, mode);
+    await this.searchService.addSearchHistory(userId, query.keyword, query.mode);
     return { message: '添加成功' };
   }
 
@@ -52,10 +52,10 @@ export class SearchController {
   @Delete("/history")
   async deleteSearchHistory(
     @Request() req: { user?: { sub: string } },
-    @Query("keyword") keyword: string,
+    @Query() query: SearchHistoryKeywordDto,
   ) {
     const userId = req.user!.sub;
-    await this.searchService.deleteSearchHistory(userId, keyword);
+    await this.searchService.deleteSearchHistory(userId, query.keyword);
     return { message: '删除成功' };
   }
 

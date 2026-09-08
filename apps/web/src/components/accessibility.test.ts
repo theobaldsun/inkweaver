@@ -25,7 +25,7 @@ test('confirmation modal exposes dialog semantics', async () => {
   assert.match(modal, /aria-modal="true"/);
   assert.match(modal, /aria-labelledby=/);
   assert.match(modal, /aria-describedby=/);
-  assert.match(modal, /event\.key === 'Escape'/);
+  assert.match(modal, /event\.key === ["']Escape["']/);
   assert.match(modal, /autoFocus/);
   assert.match(modal, /btn-primary[\s\S]*autoFocus|autoFocus[\s\S]*确认/);
   assert.match(modal, /Tab/);

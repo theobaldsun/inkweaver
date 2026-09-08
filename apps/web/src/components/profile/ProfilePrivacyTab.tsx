@@ -2,10 +2,13 @@
  * 隐私与安全 Tab：偏好、数据管理、会话列表。
  */
 
-import React, { useState } from 'react';
 import { Download, Trash2, ChevronRight, Monitor } from 'lucide-react';
-import type { UserSettings, UserSessionInfo } from '@inkweaver/shared';
+import React, { useState } from 'react';
+
 import CustomModal from '../CustomModal';
+
+import type { UserSettings, UserSessionInfo } from '@inkweaver/shared';
+
 
 interface ProfilePrivacyTabProps {
   settings: UserSettings;

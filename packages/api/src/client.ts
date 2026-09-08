@@ -3,16 +3,17 @@
  * 平台无关的核心API客户端
  */
 
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, isAxiosError, InternalAxiosRequestConfig } from 'axios';
+import axios, { isAxiosError } from 'axios';
 
-// 定义全局对象类型（用于类型声明）
-declare const window: any;
+import type { AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 
 // 定义存储适配器接口
 export interface StorageAdapter {
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<void>;
   removeItem(key: string): Promise<void>;
+  /** Web 可选能力：在持久化和标签页会话存储之间迁移认证状态。 */
+  setPersistence?(persistent: boolean): Promise<void>;
 }
 
 const TOKENS_KEY = 'syncbox_auth_tokens';
@@ -46,9 +47,9 @@ export interface ApiClientOptions {
   timeout?: number;
 }
 
-// 默认配置
-const DEFAULT_CONFIG: Required<ApiClientOptions> = {
-  baseURL: 'http://localhost:3000/api',
+// 运行时配置。浏览器默认走同源反向代理，避免生产产物绑定访问者本机端口。
+let runtimeConfig: Required<ApiClientOptions> = {
+  baseURL: '/api',
   timeout: 10000,
 };
 
@@ -120,10 +121,8 @@ interface StoredTokens {
 /**
  * 模块级共享刷新状态（所有 axios 实例共用，防止多实例同时刷新 token 导致竞态）。
  *
- * 背景：createApiClient 是工厂函数，userApi / storageApi 等模块会创建独立实例
- * （用于 blob 下载、multipart 上传等特殊场景）。若每个实例独立管理刷新状态，
- * 多个 401 会触发多次 refresh 请求，而 refresh token rotation 下第二次刷新会因
- * 旧 refresh_token 已失效而失败。
+ * 背景：同一个共享实例也可能同时收到多个 401。若每个请求独立刷新，第二次刷新
+ * 会因为 refresh token rotation 已消费旧令牌而失败。
  *
  * 解决方案：将刷新锁和等待队列提升为模块级变量，所有实例共享同一刷新流程。
  */
@@ -139,11 +138,11 @@ let sharedRefreshQueue: Array<{
  * @returns axios实例
  */
 export function createApiClient(options: { baseURL?: string; timeout?: number } = {}): AxiosInstance {
-  const config = { ...DEFAULT_CONFIG, ...options };
+  const config = { ...runtimeConfig, ...options };
 
   /**
    * 处理共享刷新队列：将结果分发给所有等待中的请求，然后清空队列。
-   * 所有 createApiClient 实例共用同一队列，防止多实例并发刷新。
+   * 所有并发请求共用同一队列，确保一轮 401 只消费一次 refresh token。
    */
   const processRefreshQueue = (error: unknown | null, token: string | null = null) => {
     sharedRefreshQueue.forEach(({ resolve, reject }) => {
@@ -172,7 +171,7 @@ export function createApiClient(options: { baseURL?: string; timeout?: number } 
       refresh_token: string;
       expires_in: number;
     }>(
-      `${config.baseURL}/auth/refresh`,
+      `${runtimeConfig.baseURL}/auth/refresh`,
       { refresh_token: tokens.refresh_token },
       { timeout: config.timeout },
     );
@@ -295,3 +294,15 @@ export function createApiClient(options: { baseURL?: string; timeout?: number } 
 }
 
 export const apiClient = createApiClient();
+
+/**
+ * 配置共享 API Client。
+ *
+ * 所有业务 API 都引用同一个实例；这里同时更新运行时配置，使 401 自动刷新也使用
+ * 与普通请求一致的 baseURL，而不是模块加载时捕获的默认地址。
+ */
+export function configureApiClient(options: ApiClientOptions): void {
+  runtimeConfig = { ...runtimeConfig, ...options };
+  apiClient.defaults.baseURL = runtimeConfig.baseURL;
+  apiClient.defaults.timeout = runtimeConfig.timeout;
+}

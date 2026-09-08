@@ -2,8 +2,8 @@
  * 存储空间 Tab。
  */
 
-import React from 'react';
 import { StorageUsagePanel } from '@inkweaver/ui';
+import React from 'react';
 
 export const ProfileStorageTab: React.FC = () => (
   <div className="settings-content">

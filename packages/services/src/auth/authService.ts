@@ -4,6 +4,7 @@
  */
 
 import { authApi, setStorageAdapter as setApiStorageAdapter, getStorageAdapter as getApiStorageAdapter, type StorageAdapter } from '@inkweaver/api';
+
 import type { LoginRequest, RegisterRequest, LoginResponse } from '@inkweaver/shared';
 
 const TOKENS_KEY = 'syncbox_auth_tokens';
@@ -84,6 +85,7 @@ export const authService = {
   async saveRememberMe(remember: boolean): Promise<void> {
     try {
       const storage = getApiStorageAdapter();
+      await storage.setPersistence?.(remember);
       if (remember) {
         await storage.setItem(REMEMBER_ME_KEY, 'true');
       } else {
@@ -151,11 +153,6 @@ export const authService = {
     const tokens = await this.getTokens();
     if (!tokens?.refresh_token || !tokens.userId) {
       return false;
-    }
-
-    const rememberMe = await this.getRememberMe();
-    if (!rememberMe) {
-      // 未勾选记住我时仍允许当前标签页会话，由 refresh 队列维持
     }
 
     try {

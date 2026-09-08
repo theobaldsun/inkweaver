@@ -4,11 +4,11 @@
  * 用途：从服务端获取标准化存储统计。
  */
 
-import { apiClient, createApiClient } from '../client';
-
-const rawClient = createApiClient();
-import type { UserStorageUsage } from '@inkweaver/shared';
 import { normalizeUserStorageUsage } from '@inkweaver/shared';
+
+import { apiClient } from '../client';
+
+import type { UserStorageUsage } from '@inkweaver/shared';
 
 export interface GetStorageUsageOptions {
   /** 强制服务端重新聚合计算 */
@@ -32,7 +32,7 @@ export const storageApi = {
   async uploadAsset(file: File): Promise<{ url: string }> {
     const formData = new FormData();
     formData.append('file', file);
-    return rawClient.post('/storage/upload', formData, {
+    return apiClient.post('/storage/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }) as Promise<{ url: string }>;
   },

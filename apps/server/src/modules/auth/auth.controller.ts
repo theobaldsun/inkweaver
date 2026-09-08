@@ -12,9 +12,9 @@ import { Body, Controller, Post } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 import { AuthService } from "./auth.service";
-import { RefreshTokenDto } from "./dto/refresh-token.dto";
 import { CheckSessionDto } from "./dto/check-session.dto";
 import { LogoutDto } from "./dto/logout.dto";
+import { RefreshTokenDto } from "./dto/refresh-token.dto";
 
 @Controller("/api/auth")
 @ApiTags('auth')

@@ -6,6 +6,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+
 import { DocumentsService } from './documents.service';
 
 @Injectable()

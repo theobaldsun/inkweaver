@@ -40,8 +40,30 @@ test('本地模式 put/get 往返', async () => {
     const loaded = await storage.getObject('assets/u1/test.bin');
     assert.ok(loaded);
     assert.deepEqual(loaded.body, body);
+
+    await storage.deleteObject('assets/u1/test.bin');
+    await storage.deleteObject('assets/u1/test.bin');
+    assert.equal(await storage.getObject('assets/u1/test.bin'), null);
+
+    await storage.putObject({
+      key: 'assets/u1/nested/one.bin',
+      body,
+      contentType: 'application/octet-stream',
+    });
+    await storage.deletePrefix('assets/u1');
+    await storage.deletePrefix('assets/u1');
+    assert.equal(await storage.getObject('assets/u1/nested/one.bin'), null);
   } finally {
     process.chdir(originalCwd);
     await rm(temporaryCwd, { recursive: true, force: true });
   }
+});
+
+test('deletePrefix 拒绝根级范围', async () => {
+  const storage = new ObjectStorageService({
+    get(_key: string, defaultValue?: string) {
+      return defaultValue;
+    },
+  } as ConfigService);
+  await assert.rejects(() => storage.deletePrefix('assets'), /范围过大/);
 });

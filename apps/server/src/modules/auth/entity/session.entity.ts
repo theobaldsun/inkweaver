@@ -9,6 +9,7 @@
  * 输出：会话记录
  */
 
+import { ApiProperty } from '@nestjs/swagger';
 import { 
   Column, 
   CreateDateColumn, 
@@ -19,7 +20,6 @@ import {
 } from "typeorm";
 
 import { User } from "../../users/entity/user.entity";
-import { ApiProperty } from '@nestjs/swagger';
 
 export enum SessionStatus {
   ACTIVE = 'active',

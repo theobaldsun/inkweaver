@@ -925,3 +925,29 @@
 - **回滚与清理**：发布切换阶段保留本次旧 Web 目录，HTTP 验收失败自动恢复；成功后按确认策略清除全部历史 Web 发布目录，不保留功能差异过大的旧静态版本。
 - **验证**：纯 Bash 回归测试覆盖缺参、产物缺失、SHA-256 拒绝、成功切换、全历史清理和失败回滚；Git Bash 语法检查通过。发布构建使用 `--force`，12 个 workspace 任务均为实际执行、Turbo `Cached: 0`。2026-09-05 使用新脚本完成生产发布，本地与远端 `index.html` SHA-256 一致；首页 HTTP 200，实际 JS 资源 HTTP 200 且 Content-Type 为 `application/javascript`；远端 Web 历史目录数量为 0。
 - **教训**：部署脚本的运行平台和工具依赖必须显式声明；静态目录不能原地 `--delete` 后再验证，应先生成候选目录，保留短暂回滚点并在验收后提交发布。
+
+---
+
+## #52 Web/Server 发布阻断项集中治理
+
+- **日期**：2026-09-07
+- **模块**：`apps/web`、`apps/server`、`packages/api`、`packages/adapters`、`packages/services`、`packages/shared`
+- **现象**：特殊上传/导出请求绕过统一 API baseURL；Refresh Token 与密码重置 Token 可并发复用；移动根目录丢失显式 `null`；账户注销遗留派生表和对象；正文与全文索引可能分离；列表竞态、目录文档 50 条截断、搜索空 Token 和输入校验不完整；生产依赖存在未处置 High/Critical。
+- **修复**：统一共享 API Client；对两类 Token 使用事务和条件更新；统一 `folderId?: string | null`；按事务顺序清理用户表并幂等删除头像和 `assets/{userId}/`；正文与 `docTsv` 同事务，Embedding 入队失败只记录并保留重试；实现 session/local 记住登录、列表请求序号、目录计数与懒加载、搜索通道上限/Upsert/DTO；AI ping 增加鉴权、限流和短缓存；升级并覆盖生产依赖。
+- **数据库**：新增 `UserDataIntegrity1756200000000`，先清理旧重复/孤儿数据，再添加搜索历史唯一索引和用户派生表级联外键；发布前必须在隔离 pgvector PostgreSQL 执行正向、回滚、重放。
+- **对象存储**：`docker-compose.test.yml` 增加隔离 MinIO；集成测试写入头像和文档图片后注销账户，并验证数据库和对象均无残留，重复删除保持成功。
+- **HTTP E2E**：真实启动 Nest 应用并连接隔离 PostgreSQL、Redis、MinIO 及 Embedding HTTP fixture，覆盖注册登录、连续/并发刷新、创建编辑、根目录/跨层级移动、搜索、上传、导出、删除全部数据与注销；测试环境禁止读取本地 `.env`。
+- **门禁**：新增 `pnpm check:web-server`、`pnpm audit:web-server` 和 GitHub Actions；Web/Server 及直接 workspace 依赖的生产 Critical/High 必须为 0。H5/Mobile 风险单独记录，不能混入本轮通过结论。
+- **验证标准**：全仓 typecheck；Web/Server lint；API/Adapter/Web/Server 测试；PostgreSQL + MinIO 集成测试；两端 production build；Web dist 禁止出现 `http://localhost:3000/api`；`git diff --check`。
+- **发布限制**：本轮修改了生产依赖和 lockfile，低内存 ECS 不得构建，也不得使用仅覆盖 dist 的热修复；必须由开发机/CI 构建完整 `linux/amd64` Server 镜像。所有 P1 和集成门禁通过前不改版本、不推送、不发布、不执行生产 migration。
+- **深度笔记**：
+  - [笔记-09：JWT 确定性与 Refresh Token 轮换原子性](./notes/笔记-09-JWT-确定性与-Refresh-Token-轮换原子性.md) — 覆盖 2.2 节：JWT 确定性为何导致同秒撞 token、`jti` 修复原理、事务+行锁+条件更新三层防御协同、刷新接口只校验 refresh_token 的职责分工。
+  - [笔记-10：docTsv 维护方案对比与数据访问层决策](./notes/笔记-10-docTsv-维护方案对比与数据访问层决策.md) — 覆盖 2.5 节：三种 docTsv 维护方案对比（DB 触发器/原生 SQL/当前事务+两次 UPDATE）、否决触发器的理由（高强度写入下 DB CPU 压力大）、QueryBuilder vs 原生 SQL 的取舍原则。
+- **技术债**：
+  1. `updateDocument` 事务+两次 UPDATE：当前正确，但高强度写入场景累积开销显著。处理建议：改为原生 SQL 合并 UPDATE，需统一改造 `projectSearchableContent` 和 `createDocument`。触发条件：性能压测显示该路径成为瓶颈。
+  2. docTsv 维护机制分散在 3 处调用：当前正确，但易遗漏新增更新路径。处理建议：改为 DB 触发器或 PG 12+ STORED 生成列（需验证 `to_tsvector` + `setweight` + `||` 组合的 IMMUTABLE 性）。触发条件：新增文档更新入口时评审。
+- **教训**：
+  - JWT 是确定性签名，任何依赖"新生成 token 与旧 token 不同"的逻辑必须确保 token 生成有足够熵源（如 `jti`），`iat` 秒级精度不足
+  - 轮换的三个失效路径需要三层防御：事务防部分成功、行锁防并发争抢、条件更新防锁释放后二次消费，任何一层缺失都有漏洞
+  - 高强度写入的文档型软件不应把 tsvector 计算压力转移到 DB 触发器，应用层显式判断 `searchableContentChanged` 后跳过计算更合适
+  - 代码风格一致性 > 局部简洁性：QueryBuilder 虽冗长但与项目其他模块一致带来的可维护性收益大于原生 SQL 的局部简洁性，混用反而增加认知负担

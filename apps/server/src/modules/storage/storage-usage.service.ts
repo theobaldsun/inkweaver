@@ -17,15 +17,15 @@
  * - 重算失败时降级返回缓存值（标记 stale=true）
  */
 
+import { DEFAULT_STORAGE_QUOTA_BYTES, STORAGE_USAGE_CACHE_TTL_MS } from '@inkweaver/shared';
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
-import { User } from '../users/entity/user.entity';
 import { Document } from '../documents/entity/document.entity';
 import { Folder } from '../documents/entity/folder.entity';
-import { DEFAULT_STORAGE_QUOTA_BYTES, STORAGE_USAGE_CACHE_TTL_MS } from '@inkweaver/shared';
 import { NotificationsService } from '../notifications/notifications.service';
+import { User } from '../users/entity/user.entity';
 
 /**
  * 存储用量统计结果（面向客户端的响应结构）。

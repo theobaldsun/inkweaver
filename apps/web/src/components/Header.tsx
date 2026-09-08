@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
 import { Search, Plus, User, X, LogOut, Sparkles } from 'lucide-react';
-import { NotificationBell } from './NotificationBell';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+import CustomModal from './CustomModal';
+import { NotificationBell } from './NotificationBell';
 import { authService } from '../services/apiClient';
 import { disconnectSocket } from '../services/syncService';
-import CustomModal from './CustomModal';
 
 const Header: React.FC = () => {
   const navigate = useNavigate();

@@ -5,6 +5,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
+
 import { getRedisConnectionOptions } from '../../config/redis.config';
 
 @Injectable()

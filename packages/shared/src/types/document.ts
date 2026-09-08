@@ -13,6 +13,8 @@ export interface Folder {
   description?: string;
   userId: string;
   children?: Folder[];
+  /** 当前文件夹内未删除文档数量，不包含子文件夹。 */
+  documentCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -42,7 +44,8 @@ export interface Document {
   isPublic?: boolean;
   shareLink?: string;
   tags?: string[];
-  folderId?: string;
+  /** 目标目录 ID；null 表示移动到根目录，undefined 表示保持不变。 */
+  folderId?: string | null;
   /** 移入回收站时间 ISO 8601 */
   deletedAt?: string;
   /** 预计永久删除时间 ISO 8601（仅回收站列表） */
@@ -76,7 +79,8 @@ export interface UpdateDocumentRequest {
   content?: string;
   isPublic?: boolean;
   tags?: string[];
-  folderId?: string;
+  /** null 表示移动到根目录，undefined 表示保持原目录。 */
+  folderId?: string | null;
 }
 
 // 文档响应

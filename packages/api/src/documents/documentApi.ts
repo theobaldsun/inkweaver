@@ -3,6 +3,7 @@
  */
 
 import { apiClient } from '../client';
+
 import type { Document, CreateDocumentRequest, UpdateDocumentRequest } from '@inkweaver/shared';
 
 /**

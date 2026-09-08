@@ -13,16 +13,16 @@
  *               最后一页无法返回上一页 / 显示当前页数量而非 total
  */
 
-import { Search as SearchIcon, X, History, FileText } from 'lucide-react';
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Search as SearchIcon, X, History, FileText } from "lucide-react";
+import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { searchApi } from '../services/apiClient';
-import { sanitizeDocumentHtml } from '../utils/sanitizeDocumentHtml';
+import { searchApi } from "../services/apiClient";
+import { sanitizeDocumentHtml } from "../utils/sanitizeDocumentHtml";
 
-import type { HybridSearchHit, SearchMode } from '@inkweaver/api';
+import type { HybridSearchHit, SearchMode } from "@inkweaver/api";
 
-const SEARCH_HISTORY_KEY = 'search_history';
+const SEARCH_HISTORY_KEY = "search_history";
 
 interface SearchHistoryItem {
   keyword: string;
@@ -32,8 +32,7 @@ interface SearchHistoryItem {
 }
 
 /** 转义正则特殊字符，防止用户输入被当作正则指令执行 */
-const escapeRegExp = (str: string): string =>
-  str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRegExp = (str: string): string => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
  * 高亮搜索关键词。
@@ -47,12 +46,14 @@ const escapeRegExp = (str: string): string =>
 const highlightSearchTerm = (text: string, term: string): React.ReactNode => {
   if (!term) return text;
   const escaped = escapeRegExp(term);
-  const regex = new RegExp(`(${escaped})`, 'gi');
+  const regex = new RegExp(`(${escaped})`, "gi");
   const parts = text.split(regex);
 
   return parts.map((part, index) =>
     part.toLowerCase().includes(term.toLowerCase()) ? (
-      <span key={index} className="highlight">{part}</span>
+      <span key={index} className="highlight">
+        {part}
+      </span>
     ) : (
       <span key={index}>{part}</span>
     ),
@@ -64,10 +65,10 @@ export const SearchPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // 输入态：仅跟随输入框，用于受控输入体验，不直接触发请求
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
 
   // 查询态：来自 URL 同步，与请求/结果相关
-  const [mode, setMode] = useState<SearchMode>('smart');
+  const [mode, setMode] = useState<SearchMode>("smart");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -75,7 +76,7 @@ export const SearchPage: React.FC = () => {
   // results 类型从 Document[] 改为 HybridSearchHit[]
   const [results, setResults] = useState<HybridSearchHit[]>([]);
   const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState('');
+  const [searchError, setSearchError] = useState("");
   const [history, setHistory] = useState<SearchHistoryItem[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
 
@@ -100,26 +101,30 @@ export const SearchPage: React.FC = () => {
       if (response.history && Array.isArray(response.history)) {
         setHistory(
           response.history.map((item) => ({
-            keyword: typeof item === 'string' ? item : item.keyword,
-            count: typeof item === 'string' ? 0 : item.count || 0,
+            keyword: typeof item === "string" ? item : item.keyword,
+            count: typeof item === "string" ? 0 : item.count || 0,
             updatedAt:
-              typeof item === 'string' ? new Date().toISOString() : item.updatedAt || new Date().toISOString(),
-            mode: typeof item === 'string' ? 'smart' : (item.mode || 'smart'),
+              typeof item === "string"
+                ? new Date().toISOString()
+                : item.updatedAt || new Date().toISOString(),
+            mode: typeof item === "string" ? "smart" : item.mode || "smart",
           })),
         );
       }
     } catch (error) {
-      console.error('Failed to load search history:', error);
+      console.error("Failed to load search history:", error);
       const saved = localStorage.getItem(SEARCH_HISTORY_KEY);
       if (saved) {
         const savedHistory = JSON.parse(saved);
         setHistory(
           savedHistory.map((item: string | SearchHistoryItem) => ({
-            keyword: typeof item === 'string' ? item : item.keyword,
-            count: typeof item === 'string' ? 0 : item.count || 0,
+            keyword: typeof item === "string" ? item : item.keyword,
+            count: typeof item === "string" ? 0 : item.count || 0,
             updatedAt:
-              typeof item === 'string' ? new Date().toISOString() : item.updatedAt || new Date().toISOString(),
-            mode: typeof item === 'string' ? 'smart' : (item.mode || 'smart'),
+              typeof item === "string"
+                ? new Date().toISOString()
+                : item.updatedAt || new Date().toISOString(),
+            mode: typeof item === "string" ? "smart" : item.mode || "smart",
           })),
         );
       }
@@ -138,34 +143,37 @@ export const SearchPage: React.FC = () => {
    * @param searchMode 搜索模式
    * @param pageNum 页码（从 1 开始）
    */
-  const handleSearch = useCallback(async (searchQuery: string, searchMode: SearchMode, pageNum: number = 1) => {
-    if (!searchQuery.trim()) return;
-    const requestId = ++searchRequestIdRef.current;
-    setSearching(true);
-    setSearchError('');
-    try {
-      const response = await searchApi.hybridSearch(searchQuery, searchMode, pageNum, 20);
-      // 仅当此请求仍是最新请求时才更新结果（防止快速连续搜索/翻页导致错序）
-      if (requestId === searchRequestIdRef.current) {
-        setResults(response.documents);
-        setTotal(response.total);
-        setHasMore(response.hasMore);
-        setTruncated(response.truncated);
-        setPage(pageNum);
+  const handleSearch = useCallback(
+    async (searchQuery: string, searchMode: SearchMode, pageNum: number = 1) => {
+      if (!searchQuery.trim()) return;
+      const requestId = ++searchRequestIdRef.current;
+      setSearching(true);
+      setSearchError("");
+      try {
+        const response = await searchApi.hybridSearch(searchQuery, searchMode, pageNum, 20);
+        // 仅当此请求仍是最新请求时才更新结果（防止快速连续搜索/翻页导致错序）
+        if (requestId === searchRequestIdRef.current) {
+          setResults(response.documents);
+          setTotal(response.total);
+          setHasMore(response.hasMore);
+          setTruncated(response.truncated);
+          setPage(pageNum);
+        }
+        await searchApi.addSearchHistory(searchQuery, searchMode).catch(() => undefined);
+      } catch (error) {
+        console.error("Search failed:", error);
+        if (requestId === searchRequestIdRef.current) {
+          setResults([]);
+          setSearchError(error instanceof Error ? error.message : "搜索失败，请稍后重试");
+        }
+      } finally {
+        if (requestId === searchRequestIdRef.current) {
+          setSearching(false);
+        }
       }
-      await searchApi.addSearchHistory(searchQuery, searchMode).catch(() => undefined);
-    } catch (error) {
-      console.error('Search failed:', error);
-      if (requestId === searchRequestIdRef.current) {
-        setResults([]);
-        setSearchError(error instanceof Error ? error.message : '搜索失败，请稍后重试');
-      }
-    } finally {
-      if (requestId === searchRequestIdRef.current) {
-        setSearching(false);
-      }
-    }
-  }, []);
+    },
+    [],
+  );
 
   /**
    * effect 作为唯一发请求出口：URL 变化 → 同步 state + 触发搜索。
@@ -174,9 +182,9 @@ export const SearchPage: React.FC = () => {
    * 不清 query state，让输入框保持用户当前输入（用户清空后可能想立刻输入新词）。
    */
   useEffect(() => {
-    const q = searchParams.get('q')?.trim();
-    const m = (searchParams.get('mode') as SearchMode) || 'smart';
-    const p = Number(searchParams.get('page')) || 1;
+    const q = searchParams.get("q")?.trim();
+    const m = (searchParams.get("mode") as SearchMode) || "smart";
+    const p = Number(searchParams.get("page")) || 1;
     if (q) {
       // 同步输入态与查询态（深链、history 跳转、回车提交等场景）
       setQuery(q);
@@ -186,12 +194,12 @@ export const SearchPage: React.FC = () => {
       // URL 无 q：主动失效在飞请求 + 清空结果态（mode/page 复位为默认值）
       searchRequestIdRef.current++;
       setResults([]);
-      setSearchError('');
+      setSearchError("");
       setTotal(0);
       setHasMore(false);
       setTruncated(false);
       setPage(1);
-      setMode('smart');
+      setMode("smart");
     }
   }, [searchParams, handleSearch]);
 
@@ -200,11 +208,11 @@ export const SearchPage: React.FC = () => {
    * 同模式不触发，避免重复请求。
    */
   const handleModeChange = (m: SearchMode) => {
-    const currentMode = (searchParams.get('mode') as SearchMode) || 'smart';
+    const currentMode = (searchParams.get("mode") as SearchMode) || "smart";
     if (m === currentMode) return;
     const next = new URLSearchParams(searchParams);
-    next.set('mode', m);
-    next.set('page', '1');
+    next.set("mode", m);
+    next.set("page", "1");
     setSearchParams(next);
   };
 
@@ -214,10 +222,10 @@ export const SearchPage: React.FC = () => {
    */
   const handlePageChange = (newPage: number) => {
     if (newPage < 1) return;
-    const currentPage = Number(searchParams.get('page')) || 1;
+    const currentPage = Number(searchParams.get("page")) || 1;
     if (newPage === currentPage) return;
     const next = new URLSearchParams(searchParams);
-    next.set('page', String(newPage));
+    next.set("page", String(newPage));
     setSearchParams(next);
   };
 
@@ -239,7 +247,7 @@ export const SearchPage: React.FC = () => {
       // 提交空：失效在飞请求 + 清空 URL 与结果态
       searchRequestIdRef.current++;
       setResults([]);
-      setSearchError('');
+      setSearchError("");
       setTotal(0);
       setHasMore(false);
       setTruncated(false);
@@ -247,10 +255,10 @@ export const SearchPage: React.FC = () => {
       return;
     }
     const next = new URLSearchParams(searchParams);
-    next.set('q', trimmed);
-    next.set('page', '1');
+    next.set("q", trimmed);
+    next.set("page", "1");
     // 保留 URL 上已有 mode（用户切换过的模式不会被冲掉），无则默认 smart
-    if (!next.get('mode')) next.set('mode', 'smart');
+    if (!next.get("mode")) next.set("mode", "smart");
     setSearchParams(next);
   };
 
@@ -260,9 +268,9 @@ export const SearchPage: React.FC = () => {
    */
   const handleClear = () => {
     searchRequestIdRef.current++;
-    setQuery('');
+    setQuery("");
     setResults([]);
-    setSearchError('');
+    setSearchError("");
     setTotal(0);
     setHasMore(false);
     setTruncated(false);
@@ -276,15 +284,15 @@ export const SearchPage: React.FC = () => {
   const handleHistoryClick = (keyword: string, useMode: SearchMode) => {
     setQuery(keyword);
     const next = new URLSearchParams();
-    next.set('q', keyword);
-    next.set('mode', useMode);
-    next.set('page', '1');
+    next.set("q", keyword);
+    next.set("mode", useMode);
+    next.set("page", "1");
     setSearchParams(next);
   };
 
   const handleRemoveHistory = async (keyword: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setHistory(prev => prev.filter(item => item.keyword !== keyword));
+    setHistory((prev) => prev.filter((item) => item.keyword !== keyword));
     await searchApi.deleteSearchHistory(keyword);
   };
 
@@ -307,7 +315,7 @@ export const SearchPage: React.FC = () => {
           value={query}
           onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') {
+            if (e.key === "Enter") {
               e.preventDefault();
               handleSearchSubmit();
             }
@@ -316,20 +324,20 @@ export const SearchPage: React.FC = () => {
           autoFocus
         />
         {query && (
-          <button className="search-clear" onClick={handleClear}>
+          <button className="search-clear" onClick={handleClear} aria-label="清空搜索">
             <X size={18} />
           </button>
         )}
       </div>
 
       <div className="search-modes">
-        {(['smart', 'keyword', 'semantic'] as SearchMode[]).map((m) => (
+        {(["smart", "keyword", "semantic"] as SearchMode[]).map((m) => (
           <button
             key={m}
-            className={`search-mode-tab ${mode === m ? 'active' : ''}`}
+            className={`search-mode-tab ${mode === m ? "active" : ""}`}
             onClick={() => handleModeChange(m)}
           >
-            {m === 'smart' ? '智能' : m === 'keyword' ? '关键词' : '语义'}
+            {m === "smart" ? "智能" : m === "keyword" ? "关键词" : "语义"}
           </button>
         ))}
       </div>
@@ -349,35 +357,50 @@ export const SearchPage: React.FC = () => {
       {!searching && results.length > 0 ? (
         <div className="search-results">
           {/* 总匹配数（来自后端 total），非当前页数量 */}
-          <div className="search-results-title">
-            找到 {total} 个结果
-          </div>
+          <div className="search-results-title">找到 {total} 个结果</div>
           <div className="results-list">
             {results.map((result) => (
-              <div key={result.id} className="result-item" onClick={() => handleResultClick(result.id)}>
+              <div
+                key={result.id}
+                className="result-item"
+                onClick={() => handleResultClick(result.id)}
+              >
                 <div className="result-title">
-                  {result.recentlyOpen && (<span>★</span>)}
-                  {highlightSearchTerm(result.title || '无标题', query)}
+                  {result.recentlyOpen && <span>★</span>}
+                  {highlightSearchTerm(result.title || "无标题", query)}
                   <span className="result-score">匹配度 {result.score}%</span>
                 </div>
                 {result.tags?.length > 0 && (
                   <div className="result-tags">
                     {result.tags.map((tag) => (
-                      <span key={tag} className="tag">#{tag}</span>
+                      <span key={tag} className="tag">
+                        #{tag}
+                      </span>
                     ))}
                   </div>
                 )}
                 {/* excerpt 高亮，ts_headline 产物已转义安全 */}
-                <div className="result-content" dangerouslySetInnerHTML={{ __html: sanitizeDocumentHtml(result.excerpt) }} />
+                <div
+                  className="result-content"
+                  dangerouslySetInnerHTML={{ __html: sanitizeDocumentHtml(result.excerpt) }}
+                />
                 <div className="result-meta">
                   <span className="result-channels">
                     {result.matchedBy.map((c) => (
                       <span key={c} className="channel-tag">
-                        {c === 'exact' ? '精确命中标题' : c === 'semantic' ? '语义匹配' : c === 'fuzzy' ? '全文匹配' : '关联召回'}
+                        {c === "exact"
+                          ? "精确命中标题"
+                          : c === "semantic"
+                            ? "语义匹配"
+                            : c === "fuzzy"
+                              ? "全文匹配"
+                              : "关联召回"}
                       </span>
                     ))}
                   </span>
-                  <span className="result-date">{new Date(result.updatedAt).toLocaleDateString()}</span>
+                  <span className="result-date">
+                    {new Date(result.updatedAt).toLocaleDateString()}
+                  </span>
                 </div>
               </div>
             ))}
@@ -385,9 +408,13 @@ export const SearchPage: React.FC = () => {
           {/* 分页栏：有结果即显示，"下一页"用 hasMore 控制禁用，避免最后一页无法返回上一页 */}
           {results.length > 0 && (
             <div className="search-pagination">
-              <button disabled={page <= 1} onClick={() => handlePageChange(page - 1)}>上一页</button>
+              <button disabled={page <= 1} onClick={() => handlePageChange(page - 1)}>
+                上一页
+              </button>
               <span>第 {page} 页</span>
-              <button disabled={!hasMore} onClick={() => handlePageChange(page + 1)}>下一页</button>
+              <button disabled={!hasMore} onClick={() => handlePageChange(page + 1)}>
+                下一页
+              </button>
             </div>
           )}
           {truncated && (
@@ -395,7 +422,7 @@ export const SearchPage: React.FC = () => {
               匹配到 {total}+ 篇文档，建议添加更多关键词（如作者、时间范围）以缩小范围。
             </div>
           )}
-                  </div>
+        </div>
       ) : !searching && !searchError && query.trim() ? (
         <div className="empty-history">
           <FileText size={40} />
@@ -417,7 +444,7 @@ export const SearchPage: React.FC = () => {
           ) : history.length > 0 ? (
             history.map((item) => {
               const modeLabel =
-                item.mode === 'smart' ? '智能' : item.mode === 'keyword' ? '关键词' : '语义';
+                item.mode === "smart" ? "智能" : item.mode === "keyword" ? "关键词" : "语义";
               return (
                 <div
                   key={`${item.keyword}-${item.mode}`}
@@ -427,9 +454,7 @@ export const SearchPage: React.FC = () => {
                   <History className="history-item-icon" size={18} />
                   <span className="history-item-text">{item.keyword}</span>
                   <span className={`history-mode-pill ${item.mode}`}>{modeLabel}</span>
-                  {item.count > 0 && (
-                    <span className="history-item-count">{item.count}</span>
-                  )}
+                  {item.count > 0 && <span className="history-item-count">{item.count}</span>}
                   <button
                     className="history-item-remove"
                     onClick={(e) => handleRemoveHistory(item.keyword, e)}

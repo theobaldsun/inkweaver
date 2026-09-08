@@ -4,7 +4,9 @@
  */
 
 import { documentApi } from '@inkweaver/api';
+
 import { storageService } from '../storage/storageService';
+
 import type { Document, CreateDocumentRequest, UpdateDocumentRequest } from '@inkweaver/shared';
 
 /**

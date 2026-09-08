@@ -5,8 +5,8 @@ import { DataSource } from 'typeorm';
 import * as Y from 'yjs';
 
 import { DocSnapshot } from './entity/doc-snapshot.entity';
-import { SnapshotService } from './snapshot.service';
 import { SyncUpdate } from './entity/sync-update.entity';
+import { SnapshotService } from './snapshot.service';
 import { SyncController } from './sync.controller';
 
 const shouldRun = process.env.RUN_INTEGRATION_TESTS === '1';

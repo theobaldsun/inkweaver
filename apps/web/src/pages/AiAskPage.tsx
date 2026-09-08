@@ -2,11 +2,12 @@
  * AI 笔记问答页（第一期 RAG）。
  */
 
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Sparkles } from 'lucide-react';
 import { getApiErrorMessage } from '@inkweaver/api';
 import { aiService } from '@inkweaver/services';
+import { Sparkles } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+
 import type { AiCitation, AiPingResponse } from '@inkweaver/api';
 
 export const AiAskPage: React.FC = () => {
@@ -24,6 +25,7 @@ export const AiAskPage: React.FC = () => {
       .then(setStatus)
       .catch(() =>
         setStatus({
+          serviceHealthy: false,
           ok: false,
           chatConfigured: false,
           embedConfigured: false,

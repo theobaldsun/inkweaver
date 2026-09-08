@@ -5,8 +5,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { AI_EMBEDDING_DIMENSIONS } from '../../../config/ai.config';
 import { toPgVectorLiteral } from './pg-vector.store';
+import { AI_EMBEDDING_DIMENSIONS } from '../../../config/ai.config';
 
 test('toPgVectorLiteral 生成合法字面量', () => {
   const embedding = Array.from({ length: AI_EMBEDDING_DIMENSIONS }, (_, i) =>

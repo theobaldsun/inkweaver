@@ -2,8 +2,10 @@
  * 认证相关的 API 接口
  */
 
-import { apiClient } from '../client';
 import { hashPasswordForTransport } from '@inkweaver/shared';
+
+import { apiClient } from '../client';
+
 import type { LoginRequest, RegisterRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse, CheckSessionRequest, CheckSessionResponse } from '@inkweaver/shared';
 
 /**

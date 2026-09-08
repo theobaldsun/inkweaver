@@ -1,24 +1,26 @@
-import React, { Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthPage } from './pages/AuthPage';
-import { ResetPasswordPage } from './pages/ResetPasswordPage';
-import { SharedDocumentPage } from './pages/SharedDocumentPage';
-import NoteListPage from './pages/NoteListPage';
-import { SearchPage } from './pages/SearchPage';
-import { AiAskPage } from './pages/AiAskPage';
-import { ProfilePage } from './pages/ProfilePage';
-import TrashPage from './pages/TrashPage';
-import { AuthRoute } from './components/AuthRoute';
-import { Layout } from './components/Layout';
-import { PlatformAdapterProvider } from '@inkweaver/ui';
-import { platformAdapter } from './adapters/platformAdapter';
-import { FolderProvider } from './contexts/FolderContext';
-import { ToastHost } from './components/Toast';
-import { Alert } from './components/CustomModal';
-import './styles/main.css';
+import { PlatformAdapterProvider } from "@inkweaver/ui";
+import React, { Suspense } from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+
+import { platformAdapter } from "./adapters/platformAdapter";
+import { AuthRoute } from "./components/AuthRoute";
+import { Alert } from "./components/CustomModal";
+import { Layout } from "./components/Layout";
+import { ToastHost } from "./components/Toast";
+import { FolderProvider } from "./contexts/FolderContext";
+import { AiAskPage } from "./pages/AiAskPage";
+import { AuthPage } from "./pages/AuthPage";
+import NoteListPage from "./pages/NoteListPage";
+import { ProfilePage } from "./pages/ProfilePage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { SearchPage } from "./pages/SearchPage";
+import { SharedDocumentPage } from "./pages/SharedDocumentPage";
+import TrashPage from "./pages/TrashPage";
+import "./styles/auth.css";
+import "./styles/main.css";
 
 /** 懒加载编辑页，避免 editor-web 全局 CSS 在首屏污染主应用布局 */
-const DocumentEditPage = React.lazy(() => import('./pages/DocumentEditPage'));
+const DocumentEditPage = React.lazy(() => import("./pages/DocumentEditPage"));
 
 const DocumentEditRoute: React.FC = () => (
   <Suspense
@@ -46,8 +48,8 @@ export const App: React.FC = () => {
             <Route path="/shared/:token" element={<SharedDocumentPage />} />
 
             <Route element={<AuthRoute />}>
-              <Route 
-                path="*" 
+              <Route
+                path="*"
                 element={
                   <FolderProvider>
                     <Layout>
@@ -63,10 +65,10 @@ export const App: React.FC = () => {
                       </Routes>
                     </Layout>
                   </FolderProvider>
-                } 
+                }
               />
             </Route>
-            
+
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </div>

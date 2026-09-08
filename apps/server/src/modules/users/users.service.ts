@@ -1,17 +1,19 @@
-import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
-import { hashDigestForStorage, verifyPasswordDigest, digestPlainPassword } from "../../common/password-crypto";
-import { matchesImageSignature } from "../../common/image-signature";
-import { QueryFailedError, Repository } from "typeorm";
 
 import { mergeUserSettings, type UserSettings } from "@inkweaver/shared";
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { QueryFailedError, Repository } from "typeorm";
+
 import { User } from "./entity/user.entity";
+import { matchesImageSignature } from "../../common/image-signature";
+import { hashDigestForStorage, verifyPasswordDigest, digestPlainPassword } from "../../common/password-crypto";
 import { AuthService } from "../auth/auth.service";
 import { SessionService } from "../auth/session.service";
-import type { CreateSessionData } from "../auth/session.service";
 import { ObjectStorageService } from "../storage/object-storage.service";
 import { StorageUsageService } from "../storage/storage-usage.service";
 import { UpdateUserSettingsDto } from "./dto/update-user-settings.dto";
+
+import type { CreateSessionData } from "../auth/session.service";
 
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 const ALLOWED_AVATAR_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -249,7 +251,7 @@ export class UsersService {
   }
 
   private toPublicProfile(user: User) {
-    const { password, ...rest } = user;
+    const { password: _password, ...rest } = user;
     return {
       ...rest,
       settings: mergeUserSettings(user.settings as Partial<UserSettings> | null),

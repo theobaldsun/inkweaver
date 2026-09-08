@@ -9,9 +9,9 @@ import { randomUUID } from 'crypto';
 
 import { BadRequestException, Injectable } from '@nestjs/common';
 
-import { matchesImageSignature } from '../../common/image-signature';
 import { ObjectStorageService } from './object-storage.service';
 import { StorageUsageService } from './storage-usage.service';
+import { matchesImageSignature } from '../../common/image-signature';
 
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const MAX_BYTES = 5 * 1024 * 1024;

@@ -3,6 +3,7 @@
  */
 
 import { ConfigService } from '@nestjs/config';
+
 import type { TypeOrmModuleOptions } from '@nestjs/typeorm';
 
 /**
@@ -23,7 +24,6 @@ export function isTypeOrmEnabled(config?: ConfigService): boolean {
  * 构建 TypeOrmModule.forRoot 选项。
  */
 export function getTypeOrmOptions(config: ConfigService): TypeOrmModuleOptions {
-  const nodeEnv = config.get<string>('NODE_ENV', 'development');
   return {
     type: 'postgres',
     host: config.get<string>('DB_HOST', 'localhost'),

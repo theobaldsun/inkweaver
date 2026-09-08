@@ -6,9 +6,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import * as Y from 'yjs';
-import type { DataSource, EntityManager } from 'typeorm';
 
 import { SyncController } from './sync.controller';
+
+import type { DataSource, EntityManager } from 'typeorm';
+
 
 const noopGateway = { broadcastDocUpdates() {} };
 
@@ -84,12 +86,10 @@ test('push 使用 JWT 用户校验文档归属后才持久化更新', async () =
       assertedOwner = userId;
     },
   };
-  let entitySaved: object | undefined;
   const mockDataSource = createMockDataSource({
     findOne: async () => null,
     create: (_entity: unknown, plainObject: object) => plainObject,
     save: async (entity: object) => {
-      entitySaved = entity;
       saved = true;
       return { ...entity, updateId: 1 };
     },

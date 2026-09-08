@@ -2,9 +2,10 @@
  * 通知 Tab：收件箱 + 通知偏好。
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
-import type { UserSettings } from '@inkweaver/shared';
 import { notificationApi, type NotificationItem } from '@inkweaver/api';
+import React, { useCallback, useEffect, useState } from 'react';
+
+import type { UserSettings } from '@inkweaver/shared';
 
 interface ProfileNotificationsTabProps {
   settings: UserSettings;

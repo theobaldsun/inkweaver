@@ -3,6 +3,7 @@
  */
 
 import { ConfigService } from '@nestjs/config';
+
 import type { ConnectionOptions } from 'bullmq';
 import type { RedisOptions } from 'ioredis';
 

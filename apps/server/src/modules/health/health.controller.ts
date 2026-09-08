@@ -3,8 +3,9 @@
  */
 
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
-import { RedisHealthService } from './redis-health.service';
+
 import { PostgresHealthService } from './postgres-health.service';
+import { RedisHealthService } from './redis-health.service';
 
 @Controller()
 export class HealthController {

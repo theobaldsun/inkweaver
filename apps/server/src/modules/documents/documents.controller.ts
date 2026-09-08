@@ -5,12 +5,15 @@
  */
 
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, Request, UseGuards, ParseUUIDPipe } from "@nestjs/common";
-import type { Request as ExpressRequest } from "express";
-import { AuthGuard } from "../auth/guard/auth.guard";
+
 
 import { DocumentsService } from "./documents.service";
 import { CreateDocumentDto } from "./dto/create-document.dto";
+import { DocumentListQueryDto, DocumentSearchQueryDto } from './dto/document-query.dto';
 import { UpdateDocumentDto } from "./dto/update-document.dto";
+import { AuthGuard } from "../auth/guard/auth.guard";
+
+import type { Request as ExpressRequest } from "express";
 
 @Controller("/api/documents")
 @UseGuards(AuthGuard)
@@ -26,36 +29,29 @@ export class DocumentsController {
   @Get()
   async getDocuments(
     @Request() req: ExpressRequest,
-    @Query("page") page: number = 1,
-    @Query("pageSize") pageSize: number = 10,
-    @Query("sortBy") sortBy: string = 'updatedAt',
-    @Query("sortOrder") sortOrder: 'ASC' | 'DESC' = 'DESC',
-    @Query("folderId") folderId?: string,
-    @Query("filter") filter?: 'all' | 'recent' | 'mine' | 'public',
+    @Query() query: DocumentListQueryDto,
   ) {
     const userId = (req.user as { sub?: string })?.sub;
     const resolvedFolderId =
-      folderId === undefined ? undefined : folderId === 'root' || folderId === '' ? null : folderId;
+      query.folderId === undefined ? undefined : query.folderId === 'root' ? null : query.folderId;
     return this.documentsService.getDocuments(
       userId!,
-      Number(page),
-      Number(pageSize),
-      sortBy,
-      sortOrder,
+      query.page,
+      query.pageSize,
+      query.sortBy,
+      query.sortOrder,
       resolvedFolderId,
-      filter ?? 'all',
+      query.filter,
     );
   }
 
   @Get("/search")
   async searchDocuments(
     @Request() req: ExpressRequest,
-    @Query("keyword") keyword: string,
-    @Query("page") page: number = 1,
-    @Query("pageSize") pageSize: number = 10,
+    @Query() query: DocumentSearchQueryDto,
   ) {
     const userId = (req.user as { sub?: string })?.sub;
-    return this.documentsService.searchDocuments(userId!, keyword, Number(page), Number(pageSize));
+    return this.documentsService.searchDocuments(userId!, query.keyword, query.page, query.pageSize);
   }
 
   @Get("/:docId")

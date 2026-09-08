@@ -7,12 +7,11 @@ import {
   type ChangePasswordRequest,
 
 } from '@inkweaver/api';
-
-import type { User, UserSettings, UserStorageUsage } from '@inkweaver/shared';
-
 import { formatStorageSize } from '@inkweaver/shared';
 
 import { storageService } from '../storage/storageService';
+
+import type { User, UserSettings, UserStorageUsage } from '@inkweaver/shared';
 
 
 

@@ -9,6 +9,7 @@ import test from "node:test";
 
 import { SearchInfraUpgrade1756000000000 } from "../../migrations/1756000000000-SearchInfraUpgrade";
 import { AddSearchHistoryMode1756100000000 } from "../../migrations/1756100000000-AddSearchHistoryMode";
+import { UserDataIntegrity1756200000000 } from "../../migrations/1756200000000-UserDataIntegrity";
 
 function queryRecorder() {
   const statements: string[] = [];
@@ -55,4 +56,24 @@ test("AddSearchHistoryMode 创建默认 smart 的非空列并提供回滚", asyn
   const down = queryRecorder();
   await migration.down(down.queryRunner as never);
   assert.match(down.statements.join("\n"), /DROP COLUMN IF EXISTS "mode"/);
+});
+
+test("UserDataIntegrity 清理历史数据并创建可回滚的数据约束", async () => {
+  const migration = new UserDataIntegrity1756200000000();
+  const up = queryRecorder();
+  await migration.up(up.queryRunner as never);
+  const upSql = up.statements.join("\n");
+  assert.match(upSql, /UQ_search_history_user_keyword/);
+  assert.match(upSql, /FK_document_chunks_document/);
+  assert.match(upSql, /FK_notifications_user/);
+  assert.match(upSql, /DELETE FROM "sync_update"/);
+  assert.match(upSql, /DELETE FROM "doc_snapshot"/);
+  assert.match(upSql, /DELETE FROM search_history/);
+  assert.match(upSql, /ON DELETE CASCADE/);
+
+  const down = queryRecorder();
+  await migration.down(down.queryRunner as never);
+  const downSql = down.statements.join("\n");
+  assert.match(downSql, /DROP CONSTRAINT IF EXISTS/);
+  assert.match(downSql, /DROP INDEX IF EXISTS/);
 });

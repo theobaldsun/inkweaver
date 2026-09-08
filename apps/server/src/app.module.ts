@@ -9,26 +9,23 @@
  * 输出：Nest 应用模块树
  */
 
+import { BullModule } from "@nestjs/bullmq";
 import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
-import { TypeOrmModule } from "@nestjs/typeorm";
-import { BullModule } from "@nestjs/bullmq";
 import { ThrottlerModule } from "@nestjs/throttler";
+import { TypeOrmModule } from "@nestjs/typeorm";
 
+import { getTypeOrmOptions, isTypeOrmEnabled } from "./config/database.config";
+import { getBullMqRootConfig } from "./config/redis.config";
 import { AiModule } from "./modules/ai/ai.module";
 import { DocumentsModule } from "./modules/documents/documents.module";
 import { HealthModule } from "./modules/health/health.module";
+import { MailModule } from "./modules/mail/mail.module";
+import { NotificationsModule } from "./modules/notifications/notifications.module";
 import { SearchModule } from "./modules/search/search.module";
 import { StorageModule } from "./modules/storage/storage.module";
 import { SyncModule } from "./modules/sync/sync.module";
 import { UsersModule } from "./modules/users/users.module";
-import { NotificationsModule } from "./modules/notifications/notifications.module";
-import { MailModule } from "./modules/mail/mail.module";
-import { getBullMqRootConfig } from "./config/redis.config";
-import {
-  getTypeOrmOptions,
-  isTypeOrmEnabled,
-} from "./config/database.config";
 
 @Module({
   imports: [
@@ -36,6 +33,8 @@ import {
       isGlobal: true,
       cache: true,
       expandVariables: true,
+      // 集成测试通过显式环境变量装配隔离服务，禁止意外读取开发者本地 .env。
+      ignoreEnvFile: process.env.NODE_ENV === "test",
     }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     BullModule.forRootAsync({

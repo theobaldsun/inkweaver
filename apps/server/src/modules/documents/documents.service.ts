@@ -339,10 +339,20 @@ export class DocumentsService {
       }
       document.folderId = updateDocumentDto.folderId;
     }
-    const saved = await this.documentsRepository.save(document);
-    // 仅当标题或正文变更时才同步 docTsv，避免无变更时的无谓 UPDATE
+    const saved = searchableContentChanged
+      ? await this.documentsRepository.manager.transaction(async (manager) => {
+          const transactionalSaved = await manager.save(Document, document);
+          await this.updateDocTsv(
+            transactionalSaved.id,
+            transactionalSaved.title,
+            transactionalSaved.content,
+            manager,
+          );
+          return transactionalSaved;
+        })
+      : await this.documentsRepository.save(document);
+    // 向量索引是可恢复派生数据，事务提交后再入队，队列失败不回滚正文。
     if (searchableContentChanged) {
-      await this.updateDocTsv(saved.id, saved.title, saved.content);
       await this.scheduleDocumentReindex(
         saved.id,
         saved.userId,
@@ -642,8 +652,13 @@ export class DocumentsService {
    * 标题权重 A，正文权重 D（截断 10 万字避免超长文档拖慢 tsvector 构建）。
    * 在 createDocument / updateDocument 保存后调用，保证搜索与正文一致。
    */
-  private async updateDocTsv(docId: string, title: string, content: string): Promise<void> {
-    await this.documentsRepository.query(
+  private async updateDocTsv(
+    docId: string,
+    title: string,
+    content: string,
+    executor: Pick<Repository<Document>, 'query'> = this.documentsRepository,
+  ): Promise<void> {
+    await executor.query(
       `UPDATE documents
        SET "docTsv" =
          setweight(to_tsvector('simple', COALESCE($2, '')), 'A') ||
@@ -665,12 +680,16 @@ export class DocumentsService {
     title: string,
     content: string,
   ): Promise<void> {
-    await this.documentIndexService.scheduleReindex({
-      docId,
-      userId,
-      title,
-      content,
-    });
+    try {
+      await this.documentIndexService.scheduleReindex({
+        docId,
+        userId,
+        title,
+        content,
+      });
+    } catch (error) {
+      this.logger.warn(`文档正文已提交，但向量索引入队失败 docId=${docId}`, error);
+    }
   }
 
   /**

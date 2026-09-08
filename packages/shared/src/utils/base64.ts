@@ -120,7 +120,7 @@ export interface Base64Config {
  */
 export function createBase64Converter(config: Base64Config = {}) {
   const {
-    optimizePerformance = true,
+    optimizePerformance: _optimizePerformance = true,
     validateInput = true
   } = config;
 

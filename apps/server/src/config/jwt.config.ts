@@ -7,6 +7,7 @@
  */
 
 import { ConfigService } from '@nestjs/config';
+
 import type { JwtModuleOptions } from '@nestjs/jwt';
 
 /** access token 默认有效期（可被 JWT_EXPIRES_IN 覆盖） */

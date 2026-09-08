@@ -17,6 +17,8 @@ export interface AiAskResponse {
 }
 
 export interface AiPingResponse {
+  /** Nest API 可响应，与 Embedding 健康状态分开。 */
+  serviceHealthy: boolean;
   ok: boolean;
   chatConfigured: boolean;
   embedConfigured: boolean;

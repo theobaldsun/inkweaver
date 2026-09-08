@@ -9,19 +9,20 @@
  * 输出：JWT 令牌、验证结果
  */
 
+import { randomUUID } from "crypto";
+
 import { Injectable, UnauthorizedException } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
 import { JwtService } from "@nestjs/jwt";
-import * as bcrypt from "bcrypt";
+import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 
+import { SessionService, type CreateSessionData } from "./session.service";
+import { verifyPasswordDigest } from "../../common/password-crypto";
 import {
   getAccessTokenTtl,
   JWT_REFRESH_EXPIRES_IN,
 } from "../../config/jwt.config";
-import { verifyPasswordDigest } from "../../common/password-crypto";
 import { User } from "../users/entity/user.entity";
-import { SessionService, type CreateSessionData } from "./session.service";
 
 export interface JwtPayload {
   sub: string; // 用户ID
@@ -117,6 +118,7 @@ export class AuthService {
 
     return this.jwtService.sign(payload, {
       expiresIn: JWT_REFRESH_EXPIRES_IN,
+      jwtid: randomUUID(),
     });
   }
 
@@ -126,7 +128,7 @@ export class AuthService {
   async verifyToken(token: string): Promise<JwtPayload> {
     try {
       return this.jwtService.verify(token);
-    } catch (error) {
+    } catch {
       throw new UnauthorizedException("无效的令牌");
     }
   }
@@ -169,8 +171,6 @@ export class AuthService {
       throw new UnauthorizedException("无效的刷新令牌");
     }
 
-    // 验证会话中的刷新令牌并获取会话
-    const session = await this.sessionService.validateRefreshToken(refreshToken, payload.sub);
     const user = await this.requireUserById(payload.sub);
     
     const [access_token, new_refresh_token] = await Promise.all([
@@ -178,14 +178,11 @@ export class AuthService {
       this.generateRefreshToken(user),
     ]);
 
-    // 更新会话中的刷新令牌
-    const newRefreshTokenHash = await bcrypt.hash(new_refresh_token, 10);
-    const newExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30天后
-    
-    await this.sessionService.updateSessionDeviceInfo(session.id, {
-      refreshTokenHash: newRefreshTokenHash,
-      expiresAt: newExpiresAt,
-    });
+    await this.sessionService.rotateRefreshToken(
+      refreshToken,
+      payload.sub,
+      new_refresh_token,
+    );
 
     return {
       access_token,
@@ -198,41 +195,37 @@ export class AuthService {
    * 应用启动时检查会话有效性并自动刷新令牌
    */
   async checkSessionAndRefresh(userId: string, refreshToken: string): Promise<CheckSessionResponse> {
-    const { isValid, session } = await this.sessionService.checkSessionValidity(userId, refreshToken);
-    
-    if (!isValid || !session) {
+    try {
+      const payload = await this.verifyToken(refreshToken);
+      if (payload.type !== 'refresh' || payload.sub !== userId) {
+        return { isValid: false };
+      }
+
+      const user = await this.requireUserById(userId);
+      const [access_token, new_refresh_token] = await Promise.all([
+        this.generateAccessToken(user),
+        this.generateRefreshToken(user),
+      ]);
+      await this.sessionService.rotateRefreshToken(
+        refreshToken,
+        userId,
+        new_refresh_token,
+      );
+
+      return {
+        isValid: true,
+        access_token,
+        refresh_token: new_refresh_token,
+        expires_in: getAccessTokenTtl().expiresSeconds,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+        },
+      };
+    } catch {
       return { isValid: false };
     }
-
-    // 会话有效，自动刷新令牌（用户必须以数据库为准）
-    await this.verifyToken(refreshToken);
-    const user = await this.requireUserById(userId);
-
-    const [access_token, new_refresh_token] = await Promise.all([
-      this.generateAccessToken(user),
-      this.generateRefreshToken(user),
-    ]);
-
-    // 更新会话中的刷新令牌
-    const newRefreshTokenHash = await bcrypt.hash(new_refresh_token, 10);
-    const newExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30天后
-    
-    await this.sessionService.updateSessionDeviceInfo(session.id, {
-      refreshTokenHash: newRefreshTokenHash,
-      expiresAt: newExpiresAt,
-    });
-
-    return {
-      isValid: true,
-      access_token,
-      refresh_token: new_refresh_token,
-      expires_in: getAccessTokenTtl().expiresSeconds,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-      },
-    };
   }
 
   /**

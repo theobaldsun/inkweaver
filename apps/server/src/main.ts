@@ -9,15 +9,16 @@
  */
 import "reflect-metadata";
 
-import { ValidationPipe, HttpException, HttpStatus } from "@nestjs/common";
+import { createLogger } from "@inkweaver/shared";
+import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
-import { createLogger } from "@inkweaver/shared";
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import * as bodyParser from 'body-parser';
-import { NestExpressApplication } from '@nestjs/platform-express';
 
 import { AppModule } from "./app.module";
+import { GlobalHttpExceptionFilter } from './common/global-http-exception.filter';
 import {
   getAppRuntimeConfig,
   assertStrongSecretsInProduction,
@@ -59,44 +60,7 @@ async function bootstrap(): Promise<void> {
   app.use(bodyParser.json({ limit: '5mb' }));
   app.use(bodyParser.urlencoded({ limit: '5mb', extended: true }));
 
-  // 全局错误处理
-  const isDev = process.env.NODE_ENV !== 'production';
-  app.useGlobalFilters({
-    catch: (exception: any, host: any) => {
-      const ctx = host.switchToHttp();
-      const response = ctx.getResponse();
-      const request = ctx.getRequest();
-
-      // 服务端始终记录完整堆栈，便于排查
-      console.error('Global error:', exception);
-
-      if (exception instanceof HttpException) {
-        const status = exception.getStatus();
-        response
-          .status(status)
-          .json({
-            statusCode: status,
-            timestamp: new Date().toISOString(),
-            path: request.url,
-            message: exception.message,
-          });
-      } else {
-        const body: Record<string, unknown> = {
-          statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
-          timestamp: new Date().toISOString(),
-          path: request.url,
-          message: isDev
-            ? exception.message || 'Internal server error'
-            : 'Internal server error',
-        };
-        // 仅在开发环境暴露堆栈供调试，生产环境一律不返回
-        if (isDev && exception.stack) {
-          body.stack = exception.stack;
-        }
-        response.status(HttpStatus.INTERNAL_SERVER_ERROR).json(body);
-      }
-    },
-  });
+  app.useGlobalFilters(new GlobalHttpExceptionFilter());
 
   // Swagger 配置
   const config = new DocumentBuilder()
@@ -134,4 +98,3 @@ bootstrap().catch((err: unknown) => {
   console.error('Bootstrap error:', err);
   process.exitCode = 1;
 });
-

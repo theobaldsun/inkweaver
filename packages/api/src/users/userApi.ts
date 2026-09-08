@@ -1,9 +1,10 @@
-import { apiClient, createApiClient } from '../client';
+import { hashPasswordForTransport } from '@inkweaver/shared';
+import { normalizeUserStorageUsage } from '@inkweaver/shared';
+
+import { apiClient } from '../client';
 
 import type { User, UserSettings, UserSessionInfo } from '@inkweaver/shared';
-import { hashPasswordForTransport } from '@inkweaver/shared';
 
-import { normalizeUserStorageUsage } from '@inkweaver/shared';
 
 
 
@@ -44,10 +45,6 @@ export interface StorageStats {
   totalStorage: number;
 
 }
-
-
-
-const rawClient = createApiClient();
 
 
 
@@ -101,7 +98,7 @@ export const userApi = {
 
     formData.append('file', file);
 
-    return rawClient.post('/users/avatar', formData, {
+    return apiClient.post('/users/avatar', formData, {
 
       headers: { 'Content-Type': 'multipart/form-data' },
 
@@ -113,7 +110,7 @@ export const userApi = {
 
   async exportData(password: string): Promise<Blob> {
     const passwordHash = await hashPasswordForTransport(password);
-    return rawClient.post(
+    return apiClient.post(
       '/users/export',
       { passwordHash },
       { responseType: 'blob' },

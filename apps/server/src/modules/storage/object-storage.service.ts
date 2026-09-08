@@ -6,12 +6,20 @@
  * 输出：写入成功 / 读取 Buffer 或 null
  */
 
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { Readable } from 'stream';
+
+import {
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  GetObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 export interface ObjectPutInput {
   key: string;
@@ -129,6 +137,60 @@ export class ObjectStorageService {
     } catch (error) {
       this.logger.debug(`MinIO get miss key=${key}: ${String(error)}`);
       return null;
+    }
+  }
+
+  /**
+   * 幂等删除单个对象，同时清理本地历史文件与当前 MinIO 对象。
+   * S3 DeleteObject 和本地 force 删除都允许目标不存在，便于注销失败后安全重试。
+   */
+  async deleteObject(keyOrPath: string): Promise<void> {
+    const key = toObjectKey(keyOrPath);
+    if (!key) throw new Error('非法对象 key');
+
+    await fs.rm(path.join(this.uploadsRoot, key), { force: true });
+    if (this.s3) {
+      await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+    }
+  }
+
+  /**
+   * 幂等删除用户对象前缀。
+   * 前缀必须至少包含一级目录，防止调用方误删整个 uploads 根或整个桶。
+   */
+  async deletePrefix(prefixOrPath: string): Promise<void> {
+    const prefix = toObjectKey(prefixOrPath)?.replace(/\/+$/, '');
+    if (!prefix || !prefix.includes('/')) {
+      throw new Error('对象前缀范围过大');
+    }
+
+    await fs.rm(path.join(this.uploadsRoot, prefix), { recursive: true, force: true });
+    if (!this.s3) return;
+
+    while (true) {
+      const listed = await this.s3.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: `${prefix}/`,
+        }),
+      );
+      const objects = (listed.Contents ?? [])
+        .map(({ Key }) => Key)
+        .filter((Key): Key is string => Boolean(Key))
+        .map((Key) => ({ Key }));
+      if (objects.length > 0) {
+        const deleted = await this.s3.send(
+          new DeleteObjectsCommand({
+            Bucket: this.bucket,
+            Delete: { Objects: objects, Quiet: true },
+          }),
+        );
+        if ((deleted.Errors?.length ?? 0) > 0) {
+          throw new Error(`对象批量删除失败：${deleted.Errors!.length} 项`);
+        }
+      }
+      // 始终重新读取首批：删除会改变列表，复用旧 continuation token 可能跳过对象。
+      if (objects.length === 0) break;
     }
   }
 }

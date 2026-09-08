@@ -2,8 +2,8 @@
  * 帮助中心 Tab：使用指南与常用入口。
  */
 
-import React from 'react';
 import { HelpCircle, FileText, Bell, MessageCircle, Trash2, Search } from 'lucide-react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 
 export const ProfileHelpTab: React.FC = () => (

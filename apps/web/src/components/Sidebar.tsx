@@ -1,8 +1,10 @@
+import { FileText, Search, User, Folder, ChevronRight, Trash2, Plus, Clock, FolderOpen, FolderPlus, Move, Trash } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
-import { FileText, Search, User, Folder, ChevronRight, Trash2, Plus, Clock, FolderOpen, FolderPlus, MoreHorizontal, Move, Trash } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { documentService, folderApi } from '../services/apiClient';
+
 import { useFolders } from '../contexts/FolderContext';
+import { documentService, folderApi } from '../services/apiClient';
+
 import type { Folder as FolderType } from '@inkweaver/shared';
 
 interface Document {
@@ -14,6 +16,7 @@ interface Document {
 
 interface FolderItem extends FolderType {
   documents?: Document[];
+  documentsLoaded?: boolean;
   children?: FolderItem[];
 }
 
@@ -29,7 +32,7 @@ const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [recentDocs, setRecentDocs] = useState<Document[]>([]);
-  const { folders, refreshFolders } = useFolders();
+  const { folders, refreshFolders, loadFolderDocuments } = useFolders();
   const [expandedFolders, setExpandedFolders] = useState<string[]>(['recent', 'my-folders']);
   const [loading, setLoading] = useState(true);
   const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
@@ -56,7 +59,7 @@ const Sidebar: React.FC = () => {
         id: doc.id,
         title: doc.title || '无标题文档',
         updatedAt: doc.updatedAt,
-        folderId: doc.folderId
+        folderId: doc.folderId ?? undefined
       }));
       setRecentDocs(docs);
     } catch (error) {
@@ -112,7 +115,7 @@ const Sidebar: React.FC = () => {
   const handleMoveDocument = async () => {
     if (!selectedDocId) return;
     try {
-      await documentService.updateDocument(selectedDocId, { folderId: moveTargetFolderId || undefined });
+      await documentService.updateDocument(selectedDocId, { folderId: moveTargetFolderId });
       setShowMoveModal(false);
       setSelectedDocId(null);
       setSelectedDocTitle('');
@@ -131,12 +134,22 @@ const Sidebar: React.FC = () => {
     setShowMoveModal(true);
   };
 
-  const toggleFolder = (folderId: string) => {
+  const toggleFolder = (folderOrId: FolderItem | string) => {
+    const folderId = typeof folderOrId === 'string' ? folderOrId : folderOrId.id;
+    const willExpand = !expandedFolders.includes(folderId);
     setExpandedFolders(prev => 
       prev.includes(folderId) 
         ? prev.filter(id => id !== folderId)
         : [...prev, folderId]
     );
+    if (
+      typeof folderOrId !== 'string' &&
+      willExpand &&
+      (folderOrId.documentCount ?? 0) > 0 &&
+      !folderOrId.documentsLoaded
+    ) {
+      void loadFolderDocuments(folderId);
+    }
   };
 
   const handleDocClick = (docId: string) => {
@@ -155,7 +168,7 @@ const Sidebar: React.FC = () => {
         <div className="folder-row">
           <button 
             className="folder-header"
-            onClick={() => toggleFolder(folder.id)}
+            onClick={() => toggleFolder(folder)}
           >
             <ChevronRight 
               size={14} 
@@ -207,10 +220,13 @@ const Sidebar: React.FC = () => {
                 </div>
               ))
             )}
+            {(folder.documentCount ?? 0) > 0 && !folder.documentsLoaded && (
+              <div className="empty-history">正在加载文档…</div>
+            )}
             {folder.children && folder.children.length > 0 && (
               renderFolders(folder.children, depth + 1)
             )}
-            {(!folder.documents || folder.documents.length === 0) && (!folder.children || folder.children.length === 0) && (
+            {(folder.documentCount ?? 0) === 0 && (!folder.children || folder.children.length === 0) && (
               <div className="empty-history">
                 <Folder size={16} />
                 <div>暂无内容</div>
@@ -221,6 +237,14 @@ const Sidebar: React.FC = () => {
       </div>
     ));
   };
+
+  const renderMoveOptions = (folderList: FolderItem[], depth = 0): React.ReactNode =>
+    folderList.map((folder) => (
+      <React.Fragment key={folder.id}>
+        <option value={folder.id}>{`${'　'.repeat(depth)}${folder.name}`}</option>
+        {folder.children?.length ? renderMoveOptions(folder.children, depth + 1) : null}
+      </React.Fragment>
+    ));
 
   return (
     <aside className="sidebar">
@@ -431,9 +455,7 @@ const Sidebar: React.FC = () => {
                 onChange={(e) => setMoveTargetFolderId(e.target.value || null)}
               >
                 <option value="">根目录</option>
-                {folders.map(folder => (
-                  <option key={folder.id} value={folder.id}>{folder.name}</option>
-                ))}
+                {renderMoveOptions(folders)}
               </select>
             </div>
             <div className="modal-footer">

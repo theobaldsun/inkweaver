@@ -10,17 +10,17 @@
  */
 
 import { Module } from "@nestjs/common";
-import { TypeOrmModule } from "@nestjs/typeorm";
-import { JwtModule } from "@nestjs/jwt";
 import { ConfigModule, ConfigService } from "@nestjs/config";
+import { JwtModule } from "@nestjs/jwt";
+import { TypeOrmModule } from "@nestjs/typeorm";
 
-import { AuthService } from "./auth.service";
-import { SessionService } from "./session.service";
 import { AuthController } from "./auth.controller";
+import { AuthService } from "./auth.service";
 import { Session } from "./entity/session.entity";
 import { AuthGuard } from "./guard/auth.guard";
-import { User } from "../users/entity/user.entity";
+import { SessionService } from "./session.service";
 import { getJwtModuleOptions } from '../../config/jwt.config';
+import { User } from "../users/entity/user.entity";
 
 @Module({
   imports: [

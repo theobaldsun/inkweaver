@@ -2,8 +2,9 @@
  * 存储容量工具函数（跨端共享）。
  */
 
-import type { UserStorageUsage } from '../types/storage';
 import { DEFAULT_STORAGE_QUOTA_BYTES } from '../types/storage';
+
+import type { UserStorageUsage } from '../types/storage';
 
 /**
  * 计算 UTF-8 字符串字节长度。

@@ -4,9 +4,10 @@
 
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+
 import { HealthController } from './health.controller';
-import { RedisHealthService } from './redis-health.service';
 import { PostgresHealthService } from './postgres-health.service';
+import { RedisHealthService } from './redis-health.service';
 
 @Module({
   imports: [ConfigModule],

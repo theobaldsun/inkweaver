@@ -4,23 +4,24 @@
  * 用途：导出 JSON、清空用户数据、注销账户（事务）
  */
 
+import { mergeUserSettings } from '@inkweaver/shared';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import * as bcrypt from 'bcrypt';
-import * as fs from 'fs/promises';
-import * as path from 'path';
 
-import { mergeUserSettings } from '@inkweaver/shared';
 import { User } from './entity/user.entity';
+import { DocumentChunk } from '../ai/entity/document-chunk.entity';
+import { AuthService } from '../auth/auth.service';
+import { PasswordResetToken } from './entity/password-reset-token.entity';
+import { Session } from '../auth/entity/session.entity';
 import { Document } from '../documents/entity/document.entity';
 import { Folder } from '../documents/entity/folder.entity';
+import { Notification } from '../notifications/notification.entity';
 import { SearchHistory } from '../search/entity/search-history.entity';
-import { Session } from '../auth/entity/session.entity';
-import { SyncUpdate } from '../sync/entity/sync-update.entity';
-import { DocSnapshot } from '../sync/entity/doc-snapshot.entity';
-import { AuthService } from '../auth/auth.service';
+import { ObjectStorageService, toObjectKey } from '../storage/object-storage.service';
 import { StorageUsageService } from '../storage/storage-usage.service';
+import { DocSnapshot } from '../sync/entity/doc-snapshot.entity';
+import { SyncUpdate } from '../sync/entity/sync-update.entity';
 
 @Injectable()
 export class UserDataService {
@@ -42,6 +43,7 @@ export class UserDataService {
     private readonly dataSource: DataSource,
     private readonly authService: AuthService,
     private readonly storageUsageService: StorageUsageService,
+    private readonly objectStorage: ObjectStorageService,
   ) {}
 
   /**
@@ -95,9 +97,10 @@ export class UserDataService {
       throw new UnauthorizedException('用户不存在');
     }
 
-    await this.deleteAllUserContent(userId);
-    await this.deleteAvatarFile(user.avatarUrl);
-    await this.usersRepository.delete({ id: userId });
+    await this.deleteAllUserContent(userId, {
+      deleteAccount: true,
+      avatarUrl: user.avatarUrl,
+    });
     return { message: '账户已注销' };
   }
 
@@ -112,7 +115,10 @@ export class UserDataService {
     }
   }
 
-  private async deleteAllUserContent(userId: string): Promise<void> {
+  private async deleteAllUserContent(
+    userId: string,
+    options: { deleteAccount?: boolean; avatarUrl?: string | null } = {},
+  ): Promise<void> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -122,10 +128,25 @@ export class UserDataService {
         await queryRunner.manager.delete(SyncUpdate, { docId: doc.id });
         await queryRunner.manager.delete(DocSnapshot, { docId: doc.id });
       }
+      await queryRunner.manager.delete(DocumentChunk, { userId });
       await queryRunner.manager.delete(Document, { userId });
       await queryRunner.manager.delete(Folder, { userId });
       await queryRunner.manager.delete(SearchHistory, { userId });
+      await queryRunner.manager.delete(Notification, { userId });
+      await queryRunner.manager.delete(PasswordResetToken, { userId });
       await queryRunner.manager.delete(Session, { userId });
+
+      // 外部对象删除放在提交前：失败时数据库回滚，调用方可用相同请求安全重试。
+      await this.objectStorage.deletePrefix(`assets/${userId}`);
+      if (options.deleteAccount && options.avatarUrl) {
+        const avatarKey = toObjectKey(options.avatarUrl);
+        if (avatarKey?.startsWith('avatars/')) {
+          await this.objectStorage.deleteObject(avatarKey);
+        }
+      }
+      if (options.deleteAccount) {
+        await queryRunner.manager.delete(User, { id: userId });
+      }
       await queryRunner.commitTransaction();
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -135,15 +156,4 @@ export class UserDataService {
     }
   }
 
-  private async deleteAvatarFile(avatarUrl: string | null): Promise<void> {
-    if (!avatarUrl?.startsWith('/uploads/avatars/')) {
-      return;
-    }
-    const filePath = path.join(process.cwd(), avatarUrl.replace(/^\//, ''));
-    try {
-      await fs.unlink(filePath);
-    } catch {
-      // 文件可能不存在，忽略
-    }
-  }
 }

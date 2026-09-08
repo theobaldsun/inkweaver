@@ -4,8 +4,9 @@
 
 import 'reflect-metadata';
 import { readFileSync, existsSync } from 'fs';
-import { DataSource } from 'typeorm';
 import { join } from 'path';
+
+import { DataSource } from 'typeorm';
 
 function loadEnvFile(): void {
   const envPath = join(__dirname, '..', '.env');

@@ -2,11 +2,15 @@
  * 个人中心顶栏：头像与统计卡片。
  */
 
-import React, { useRef } from 'react';
-import { User, FileText, BarChart3, Clock, Edit3 } from 'lucide-react';
-import type { User as UserType } from '@inkweaver/shared';
 import { formatStorageSize } from '@inkweaver/shared';
+import { User, FileText, BarChart3, Clock, Edit3 } from 'lucide-react';
+import React, { useRef } from 'react';
+
 import { getAssetUrl } from '../../utils/assetUrl';
+
+import type { User as UserType } from '@inkweaver/shared';
+
+
 
 interface ProfileHeaderProps {
   user: UserType | null;

@@ -9,10 +9,12 @@
  * - `updateFolder` / `removeFolder` 已支持递归操作嵌套子文件夹（修复 WEB-P2-10）
  * - `refreshFolders` 从服务端全量拉取最新树
  */
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import type { ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+
 import { folderApi, documentService } from '../services/apiClient';
+
 import type { Folder } from '@inkweaver/shared';
+import type { ReactNode } from 'react';
 
 interface DocumentItem {
   id: string;
@@ -23,6 +25,7 @@ interface DocumentItem {
 
 interface FolderWithDocs extends Folder {
   documents?: DocumentItem[];
+  documentsLoaded?: boolean;
   children?: FolderWithDocs[];
 }
 
@@ -32,39 +35,22 @@ interface FolderContextType {
   addFolder: (folder: Folder) => void;
   updateFolder: (folderId: string, updates: Partial<Folder>) => void;
   removeFolder: (folderId: string) => void;
+  loadFolderDocuments: (folderId: string) => Promise<void>;
 }
 
 const FolderContext = createContext<FolderContextType | undefined>(undefined);
 
 export const FolderProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [folders, setFolders] = useState<FolderWithDocs[]>([]);
+  /** folderId → 当前加载序号，刷新目录树后旧文档请求不会回写。 */
+  const documentRequestIds = useRef(new Map<string, number>());
+  const documentRequestSequence = useRef(0);
 
   const loadFolders = useCallback(async () => {
     try {
       const folderList = await folderApi.getFolderTree();
-      const response = await documentService.getDocuments(1, 50);
-      const allDocs = response.documents.map(doc => ({
-        id: doc.id,
-        title: doc.title || '无标题文档',
-        updatedAt: doc.updatedAt,
-        folderId: doc.folderId
-      }));
-
-      const addDocumentsToFolder = (folders: Folder[]): FolderWithDocs[] => {
-        return folders.map(folder => {
-          const folderWithDocs: FolderWithDocs = {
-            ...folder,
-            documents: allDocs.filter(doc => doc.folderId === folder.id)
-          };
-          if (folder.children && folder.children.length > 0) {
-            folderWithDocs.children = addDocumentsToFolder(folder.children);
-          }
-          return folderWithDocs;
-        });
-      };
-
-      const foldersWithDocs = addDocumentsToFolder(folderList);
-      setFolders(foldersWithDocs);
+      documentRequestIds.current.clear();
+      setFolders(folderList as FolderWithDocs[]);
     } catch (error) {
       console.error('Failed to load folders:', error);
       setFolders([]);
@@ -80,7 +66,55 @@ export const FolderProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   }, [loadFolders]);
 
   const addFolder = useCallback((folder: Folder) => {
-    setFolders(prev => [...prev, { ...folder, documents: [] }]);
+    setFolders(prev => [...prev, { ...folder, documentCount: 0 }]);
+  }, []);
+
+  /** 按目录分页加载全部文档；只有展开目录时才发起请求。 */
+  const loadFolderDocuments = useCallback(async (folderId: string) => {
+    const requestId = ++documentRequestSequence.current;
+    documentRequestIds.current.set(folderId, requestId);
+    const documents: DocumentItem[] = [];
+    const pageSize = 100;
+    let page = 1;
+    let total = 0;
+    try {
+      do {
+        const response = await documentService.getDocuments(
+          page,
+          pageSize,
+          'updatedAt',
+          'DESC',
+          folderId,
+        );
+        total = response.total;
+        if (response.documents.length === 0 && documents.length < total) {
+          throw new Error('目录分页提前返回空页');
+        }
+        documents.push(...response.documents.map((doc) => ({
+          id: doc.id,
+          title: doc.title || '无标题文档',
+          updatedAt: doc.updatedAt,
+          folderId: doc.folderId ?? undefined,
+        })));
+        page += 1;
+      } while (documents.length < total);
+      if (documentRequestIds.current.get(folderId) !== requestId) return;
+    } catch (error) {
+      if (documentRequestIds.current.get(folderId) === requestId) {
+        console.error(`Failed to load documents for folder ${folderId}:`, error);
+      }
+      return;
+    }
+
+    const updateDocuments = (list: FolderWithDocs[]): FolderWithDocs[] => list.map((folder) => {
+      if (folder.id === folderId) {
+        return { ...folder, documents, documentsLoaded: true, documentCount: total };
+      }
+      return folder.children?.length
+        ? { ...folder, children: updateDocuments(folder.children) }
+        : folder;
+    });
+    setFolders((current) => updateDocuments(current));
   }, []);
 
   /**
@@ -137,6 +171,7 @@ const removeFolder = useCallback((folderId: string) => {
       addFolder,
       updateFolder,
       removeFolder,
+      loadFolderDocuments,
     }}>
       {children}
     </FolderContext.Provider>

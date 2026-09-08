@@ -6,6 +6,7 @@ import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 import { AI_EMBEDDING_DIMENSIONS } from '../../../config/ai.config';
+
 import type {
   SimilarityHit,
   VectorChunkRecord,

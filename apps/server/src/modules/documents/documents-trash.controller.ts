@@ -7,9 +7,12 @@
  */
 
 import { Controller, Delete, Get, Query, Request, UseGuards } from "@nestjs/common";
-import type { Request as ExpressRequest } from "express";
-import { AuthGuard } from "../auth/guard/auth.guard";
+
 import { DocumentsService } from "./documents.service";
+import { TrashListQueryDto } from './dto/document-query.dto';
+import { AuthGuard } from "../auth/guard/auth.guard";
+
+import type { Request as ExpressRequest } from "express";
 
 @Controller("/api/documents/trash")
 @UseGuards(AuthGuard)
@@ -24,11 +27,10 @@ export class DocumentsTrashController {
   @Get()
   async getTrashDocuments(
     @Request() req: ExpressRequest,
-    @Query("page") page: number = 1,
-    @Query("pageSize") pageSize: number = 20,
+    @Query() query: TrashListQueryDto,
   ) {
     const userId = (req.user as { sub?: string })?.sub;
-    return this.documentsService.getTrashDocuments(userId!, Number(page), Number(pageSize));
+    return this.documentsService.getTrashDocuments(userId!, query.page, query.pageSize);
   }
 
   /**

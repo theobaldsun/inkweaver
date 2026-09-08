@@ -1,6 +1,6 @@
-import { setStorageAdapter } from '@inkweaver/services';
 import { webStorageAdapter } from '@inkweaver/adapters';
 import { apiClient } from '@inkweaver/api';
+import { setStorageAdapter } from '@inkweaver/services';
 
 setStorageAdapter(webStorageAdapter);
 

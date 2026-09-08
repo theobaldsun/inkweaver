@@ -20,17 +20,23 @@ import { Injectable, NotFoundException, BadRequestException } from "@nestjs/comm
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 
-import { Folder } from "./entity/folder.entity";
+
+import { DocumentsService } from "./documents.service";
 import { CreateFolderDto } from "./dto/create-folder.dto";
 import { UpdateFolderDto } from "./dto/update-folder.dto";
+import { Folder } from "./entity/folder.entity";
 import { StorageUsageService } from "../storage/storage-usage.service";
-import { DocumentsService } from "./documents.service";
+import { Document } from './entity/document.entity';
+
+import type { FindOptionsWhere } from 'typeorm';
 
 @Injectable()
 export class FoldersService {
   constructor(
     @InjectRepository(Folder)
     private foldersRepository: Repository<Folder>,
+    @InjectRepository(Document)
+    private documentsRepository: Repository<Document>,
     private readonly documentsService: DocumentsService,
     private readonly storageUsageService: StorageUsageService,
   ) {}
@@ -60,7 +66,7 @@ export class FoldersService {
    * @param parentId 可选的父文件夹 ID；不传则返回所有顶层文件夹
    */
   async getFolders(userId: string, parentId?: string): Promise<Folder[]> {
-    const where: Record<string, any> = { userId };
+    const where: FindOptionsWhere<Folder> = { userId };
     if (parentId !== undefined) {
       where.parentId = parentId;
     }
@@ -148,7 +154,7 @@ export class FoldersService {
    * @param deleteAll true=级联删除所有子文件夹和文档；false=仅删除文件夹本身（子文件夹升为根）
    */
   async deleteFolder(folderId: string, userId: string, deleteAll: boolean = true): Promise<void> {
-    const folder = await this.getFolder(folderId, userId);
+    await this.getFolder(folderId, userId);
 
     if (deleteAll) {
       await this.deleteFolderWithContent(folderId, userId);
@@ -271,17 +277,31 @@ export class FoldersService {
    * @param userId 用户 ID
    * @returns 根节点文件夹数组（包含 children 嵌套结构）
    */
-  async getFolderTree(userId: string): Promise<Folder[]> {
+  async getFolderTree(userId: string): Promise<Array<Folder & { documentCount: number }>> {
     const allFolders = await this.foldersRepository.find({
       where: { userId },
       order: { updatedAt: "DESC" },
     });
 
-    const folderMap = new Map<string, Folder>();
-    const rootFolders: Folder[] = [];
+    const counts: Array<{ folderId: string; count: string }> = await this.documentsRepository
+      .createQueryBuilder('document')
+      .select('document.folderId', 'folderId')
+      .addSelect('COUNT(*)', 'count')
+      .where('document.userId = :userId', { userId })
+      .andWhere('document.deletedAt IS NULL')
+      .andWhere('document.folderId IS NOT NULL')
+      .groupBy('document.folderId')
+      .getRawMany();
+    const countMap = new Map(counts.map((row) => [row.folderId, Number(row.count)]));
+    const folderMap = new Map<string, Folder & { documentCount: number }>();
+    const rootFolders: Array<Folder & { documentCount: number }> = [];
 
     allFolders.forEach(folder => {
-      folderMap.set(folder.id, { ...folder, children: [] });
+      folderMap.set(folder.id, {
+        ...folder,
+        children: [],
+        documentCount: countMap.get(folder.id) ?? 0,
+      });
     });
 
     folderMap.forEach(folder => {

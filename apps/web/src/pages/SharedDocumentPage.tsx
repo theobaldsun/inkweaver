@@ -3,9 +3,10 @@
  */
 
 import { documentApi, getApiErrorMessage } from '@inkweaver/api';
-import { sanitizeDocumentHtml } from '../utils/sanitizeDocumentHtml';
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+
+import { sanitizeDocumentHtml } from '../utils/sanitizeDocumentHtml';
 
 export const SharedDocumentPage: React.FC = () => {
   const { token } = useParams<{ token: string }>();
