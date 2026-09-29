@@ -12,5 +12,6 @@ import { Document } from '../documents/entity/document.entity';
   imports: [TypeOrmModule.forFeature([SearchHistory, Document]), AuthModule, AiModule],
   providers: [SearchService],
   controllers: [SearchController],
+  exports: [SearchService],
 })
 export class SearchModule {}

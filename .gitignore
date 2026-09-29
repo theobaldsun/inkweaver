@@ -13,3 +13,4 @@ uploads/
 services/embed-service/.venv/
 __pycache__/
 *.pyc
+.workbuddy-ai/

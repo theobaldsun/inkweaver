@@ -24,6 +24,7 @@ RUN addgroup -g 1001 inkweaver && adduser -u 1001 -G inkweaver -D inkweaver
 
 COPY --from=builder /deploy ./
 COPY --from=builder /app/apps/server/dist ./dist
+COPY --from=builder /app/apps/server/config ./config
 COPY --from=builder /app/apps/server/docker-entrypoint.sh /docker-entrypoint.sh
 
 RUN chmod +x /docker-entrypoint.sh \

@@ -19,3 +19,4 @@ export * from './storage/storageApi';
 export * from './search/searchApi';
 export * from './notifications/notificationApi';
 export * from './ai/aiApi';
+export * from './agent/agentApi';

@@ -8,7 +8,7 @@ import { Alert } from "./components/CustomModal";
 import { Layout } from "./components/Layout";
 import { ToastHost } from "./components/Toast";
 import { FolderProvider } from "./contexts/FolderContext";
-import { AiAskPage } from "./pages/AiAskPage";
+import { AgentPage } from "./pages/AgentPage";
 import { AuthPage } from "./pages/AuthPage";
 import NoteListPage from "./pages/NoteListPage";
 import { ProfilePage } from "./pages/ProfilePage";
@@ -56,7 +56,7 @@ export const App: React.FC = () => {
                       <Routes>
                         <Route path="/notes" element={<NoteListPage />} />
                         <Route path="/search" element={<SearchPage />} />
-                        <Route path="/ai" element={<AiAskPage />} />
+                        <Route path="/ai" element={<AgentPage />} />
                         <Route path="/profile" element={<ProfilePage />} />
                         <Route path="/trash" element={<TrashPage />} />
                         <Route path="/documents/new" element={<DocumentEditRoute />} />

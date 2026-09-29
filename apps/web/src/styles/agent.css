@@ -1,0 +1,29 @@
+.agent-page { padding: 24px; max-width: 1600px; margin: auto; color: var(--text-primary, #182230); }
+.agent-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.agent-header h1 { margin: 0; font-size: 26px; }
+.agent-header p, .agent-hint { color: var(--text-secondary, #667085); font-size: 14px; }
+.agent-layout { display: grid; grid-template-columns: 180px minmax(280px, 1fr) minmax(300px, 1fr); gap: 24px; }
+.agent-page h2 { font-size: 18px; margin: 0 0 16px; }
+.agent-page h3 { font-size: 16px; }
+.agent-page button, .agent-page select, .agent-page textarea { font: inherit; border: 1px solid var(--border-color, #d0d5dd); border-radius: 8px; padding: 10px 12px; background: var(--bg-primary, #fff); color: inherit; }
+.agent-page button { cursor: pointer; min-height: 42px; }
+.agent-page button:disabled { opacity: .5; cursor: not-allowed; }
+.agent-page button:focus-visible, .agent-page textarea:focus-visible, .agent-page select:focus-visible { outline: 2px solid var(--color-primary, #2563eb); outline-offset: 2px; }
+.agent-page button[aria-pressed="true"], .agent-page .agent-primary { background: var(--color-primary, #2563eb); color: white; border-color: transparent; }
+.agent-history button { display: block; width: 100%; text-align: left; margin-bottom: 8px; overflow-wrap: anywhere; }
+.agent-modes, .agent-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.agent-page label { display: block; font-size: 14px; margin: 12px 0 6px; }
+.agent-page textarea, .agent-page select { width: 100%; box-sizing: border-box; }
+.agent-page textarea { resize: vertical; line-height: 1.6; }
+.agent-messages { min-height: 220px; max-height: 55vh; overflow-y: auto; margin: 20px 0; }
+.agent-empty { padding: 48px 16px; color: var(--text-secondary, #667085); text-align: center; }
+.agent-message { padding: 16px; margin-bottom: 12px; border-radius: 12px; background: var(--bg-secondary, #f8fafc); }
+.agent-message-user { border-left: 3px solid var(--color-primary, #2563eb); }
+.agent-prose { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.75; margin: 10px 0; }
+.agent-page .agent-link { border: 0; background: transparent; padding: 0; color: var(--color-primary, #2563eb); font-size: 13px; }
+.agent-notice { padding: 12px 16px; background: var(--bg-secondary, #f8fafc); border-left: 3px solid #d6a34a; border-radius: 8px; overflow-wrap: anywhere; }
+.agent-artifact { margin: 20px 0; border-top: 1px solid var(--border-color, #e4e7ec); padding-top: 12px; }
+.agent-page summary { cursor: pointer; padding: 8px 0; }
+.agent-page a { color: var(--color-primary, #2563eb); text-decoration: underline; }
+@media (max-width: 1100px) { .agent-layout { grid-template-columns: 150px minmax(0, 1fr); } .agent-results { grid-column: 2; } }
+@media (max-width: 640px) { .agent-page { padding: 16px; } .agent-layout { display: flex; flex-direction: column; } .agent-history { max-height: 170px; overflow-y: auto; } .agent-header { align-items: flex-start; } }

@@ -10,6 +10,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 
 import { User } from './entity/user.entity';
+import { deleteAgentData } from '../agent/agent-data.cleanup';
+import { exportAgentData } from '../agent/agent-data.exporter';
 import { DocumentChunk } from '../ai/entity/document-chunk.entity';
 import { AuthService } from '../auth/auth.service';
 import { PasswordResetToken } from './entity/password-reset-token.entity';
@@ -64,6 +66,7 @@ export class UserDataService {
       order: { updatedAt: 'DESC' },
       take: 500,
     });
+    const agent = await exportAgentData(this.dataSource.manager, userId);
 
     return {
       exportedAt: new Date().toISOString(),
@@ -74,6 +77,7 @@ export class UserDataService {
       documents,
       folders,
       searchHistory,
+      agent,
     };
   }
 
@@ -123,6 +127,8 @@ export class UserDataService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
+      // 在任何业务数据或外部对象删除前检查 Agent 运行状态，并保持用户行锁至事务结束。
+      await deleteAgentData(queryRunner.manager, userId);
       const docs = await queryRunner.manager.find(Document, { where: { userId } });
       for (const doc of docs) {
         await queryRunner.manager.delete(SyncUpdate, { docId: doc.id });

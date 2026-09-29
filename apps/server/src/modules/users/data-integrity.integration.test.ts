@@ -82,10 +82,18 @@ test("迁移、认证并发与账户清理形成完整闭环", { skip: !shouldRu
 
   await dataSource.initialize();
   try {
-    await dataSource.dropDatabase();
+    // 固定连接仅指向本地测试库；重建 schema 同时清除 TypeORM 遗漏的函数和 checkpoint 表。
+    await dataSource.query('DROP SCHEMA IF EXISTS agent_checkpoint CASCADE');
+    await dataSource.query('DROP SCHEMA public CASCADE');
+    await dataSource.query('CREATE SCHEMA public');
     const migrations = await dataSource.runMigrations({ transaction: "all" });
-    assert.ok(migrations.some((migration) => migration.name === "UserDataIntegrity1756200000000"));
-    await dataSource.undoLastMigration({ transaction: "all" });
+    const targetIndex = migrations.findIndex((migration) => migration.name === "UserDataIntegrity1756200000000");
+    assert.ok(targetIndex >= 0, '必须执行目标数据完整性迁移');
+    // 后续迁移也可能建立约束，按真实执行顺序回退到目标之前，不能假设目标永远是最后一条。
+    const reverted = migrations.slice(targetIndex);
+    for (const _migration of [...reverted].reverse()) {
+      await dataSource.undoLastMigration({ transaction: "all" });
+    }
     await dataSource.query(
       `INSERT INTO documents (id, title, content, "userId", "isPublic", "createdAt", "updatedAt")
        VALUES ($1, 'orphan', 'orphan', $2, false, NOW(), NOW())`,
@@ -112,7 +120,7 @@ test("迁移、认证并发与账户清理形成完整闭环", { skip: !shouldRu
       [orphanUserId],
     );
     const replayed = await dataSource.runMigrations({ transaction: "all" });
-    assert.equal(replayed.at(-1)?.name, "UserDataIntegrity1756200000000");
+    assert.deepEqual(replayed.map((migration) => migration.name), reverted.map((migration) => migration.name));
     for (const table of ["documents", "folders", "search_history", "sync_update", "doc_snapshot"]) {
       const [{ count }] = await dataSource.query(`SELECT COUNT(*)::int AS count FROM ${table}`);
       assert.equal(Number(count), 0, `${table} 的旧版孤儿数据应被清理`);
@@ -281,7 +289,9 @@ test("迁移、认证并发与账户清理形成完整闭环", { skip: !shouldRu
     await objectStorage.deleteObject(avatarKey);
     await objectStorage.deletePrefix(`assets/${userId}`);
   } finally {
-    await dataSource.dropDatabase();
+    await dataSource.query('DROP SCHEMA IF EXISTS agent_checkpoint CASCADE');
+    await dataSource.query('DROP SCHEMA public CASCADE');
+    await dataSource.query('CREATE SCHEMA public');
     await dataSource.destroy();
     s3.destroy();
   }

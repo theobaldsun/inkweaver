@@ -199,7 +199,11 @@ export class StorageUsageService {
     const updateBytes = await this.calculateTotalUpdateBytes(userId);
 
     const syncDataBytes = snapshotBytes + updateBytes;
-    const usedBytes = documentDataBytes + syncDataBytes;
+    // 尚未迁移 Agent 的实例保持兼容；函数存在时将来源、成果和检查点计入同一用户总量。
+    const [agentSchema] = await this.usersRepository.manager.query("SELECT to_regprocedure('agent_storage_bytes(uuid)') IS NOT NULL AS ready");
+    const agentRows = agentSchema?.ready ? await this.usersRepository.manager.query('SELECT agent_storage_bytes($1::uuid)::text AS bytes', [userId]) : [];
+    const agentDataBytes = Number(agentRows[0]?.bytes ?? 0);
+    const usedBytes = documentDataBytes + syncDataBytes + agentDataBytes;
 
     // 写回缓存
     user.storageUsedBytes = String(usedBytes);

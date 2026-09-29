@@ -56,3 +56,20 @@ test('最佳结果低于绝对阈值时不向生成模型提供上下文', async
 
   assert.deepEqual(receivedHits, []);
 });
+
+
+test('纯检索不调用回答模型，并保持用户和文档范围', async () => {
+  let calls = 0;
+  const service = new RagService(
+    { async embedQuery() { return [1]; } } as never,
+    { async answerWithContext() { throw new Error('不应生成回答'); } } as never,
+    { async similaritySearch(user: string, _vector: number[], topK: number, ids: string[]) {
+      calls += 1;
+      assert.equal(user, 'owner'); assert.equal(topK, 3); assert.deepEqual(ids, ['doc']);
+      return [hit('doc', 0.8), hit('noise', 0.1)];
+    } } as never,
+  );
+  assert.deepEqual((await service.retrieve('owner', '问题', { topK: 3, docIds: ['doc'] })).map((h) => h.docId), ['doc']);
+  assert.deepEqual(await service.retrieve('owner', '问题', { docIds: [] }), []);
+  assert.equal(calls, 1);
+});

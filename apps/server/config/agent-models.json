@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "enabled": false,
+  "activeProfile": "default",
+  "profiles": {
+    "default": {
+      "adapter": "openai-compatible",
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKeyEnv": "AGENT_MODEL_API_KEY",
+      "model": "configure-your-model",
+      "toolCalling": true,
+      "temperature": 0.2,
+      "timeoutMs": 60000,
+      "limits": {
+        "contextTokens": 12000,
+        "outputTokens": 2000,
+        "callsPerRun": 10,
+        "callsPerUserDay": 100,
+        "reservedTokensPerRun": 120000,
+        "reservedTokensPerUserDay": 1200000
+      }
+    }
+  }
+}

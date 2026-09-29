@@ -56,14 +56,16 @@ export class RagService {
     question: string,
     options?: { docIds?: string[]; topK?: number },
   ): Promise<RagAnswerResult> {
-    const queryEmbedding = await this.embeddingClient.embedQuery(question);
-    const candidates = await this.vectorStore.similaritySearch(
-      userId,
-      queryEmbedding,
-      options?.topK ?? 5,
-      options?.docIds,
-    );
-    const hits = filterRelevantHits(candidates);
+    const hits = await this.retrieve(userId, question, options);
     return this.chatClient.answerWithContext(question, hits);
+  }
+
+  /** 仅检索当前用户的相关分块；供 Agent 复用，不触发回答模型。 */
+  async retrieve(userId: string, question: string, options?: { docIds?: string[]; topK?: number }): Promise<SimilarityHit[]> {
+    // 显式空范围不能意外扩大成用户的全部文档。
+    if (options?.docIds?.length === 0) return [];
+    const queryEmbedding = await this.embeddingClient.embedQuery(question);
+    const candidates = await this.vectorStore.similaritySearch(userId, queryEmbedding, options?.topK ?? 5, options?.docIds);
+    return filterRelevantHits(candidates);
   }
 }

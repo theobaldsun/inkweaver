@@ -17,6 +17,7 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 
 import { getTypeOrmOptions, isTypeOrmEnabled } from "./config/database.config";
 import { getBullMqRootConfig } from "./config/redis.config";
+import { AgentModule } from "./modules/agent/agent.module";
 import { AiModule } from "./modules/ai/ai.module";
 import { DocumentsModule } from "./modules/documents/documents.module";
 import { HealthModule } from "./modules/health/health.module";
@@ -57,6 +58,7 @@ import { UsersModule } from "./modules/users/users.module";
           NotificationsModule,
           MailModule,
           AiModule,
+          AgentModule,
         ]
       : []),
     SyncModule,

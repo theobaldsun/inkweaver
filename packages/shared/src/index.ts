@@ -12,6 +12,25 @@
 export type { Logger, LoggerLevel, LoggerOptions } from "./logger";
 export { createLogger } from "./logger";
 
+export { parseAgentContentBlock } from "./utils/agentContent";
+export type {
+  AgentContentErrorCode,
+  AgentContentParseResult,
+  AgentContentParseOptions,
+} from "./utils/agentContent";
+
+// Agent 内容契约：仅导出类型，不开放任何运行时媒体能力。
+export type {
+  AgentContentContractVersion,
+  AgentAssetStatus,
+  AgentAssetRef,
+  AgentTextBlock,
+  AgentImageBlock,
+  AgentAudioBlock,
+  AgentFileBlock,
+  AgentContentBlock,
+} from "./types/agent-content";
+
 // 导出认证相关类型
 export type {
   LoginRequest,

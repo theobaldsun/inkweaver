@@ -169,7 +169,10 @@ test("核心 HTTP E2E 完成注册到注销的完整业务闭环", { skip: !shou
   let app: NestExpressApplication | undefined;
   try {
     await schemaDataSource.initialize();
-    await schemaDataSource.dropDatabase();
+    // 此连接固定为本地测试库；清理迁移创建的独立 schema，保证失败后重跑也可恢复。
+    await schemaDataSource.query('DROP SCHEMA IF EXISTS agent_checkpoint CASCADE');
+    await schemaDataSource.query('DROP SCHEMA public CASCADE');
+    await schemaDataSource.query('CREATE SCHEMA public');
     await schemaDataSource.runMigrations({ transaction: "all" });
     await schemaDataSource.destroy();
 
@@ -424,7 +427,9 @@ test("核心 HTTP E2E 完成注册到注销的完整业务闭环", { skip: !shou
     const cleanupDataSource = createSchemaDataSource();
     try {
       await cleanupDataSource.initialize();
-      await cleanupDataSource.dropDatabase();
+      await cleanupDataSource.query('DROP SCHEMA IF EXISTS agent_checkpoint CASCADE');
+      await cleanupDataSource.query('DROP SCHEMA public CASCADE');
+      await cleanupDataSource.query('CREATE SCHEMA public');
     } finally {
       if (cleanupDataSource.isInitialized) await cleanupDataSource.destroy();
     }

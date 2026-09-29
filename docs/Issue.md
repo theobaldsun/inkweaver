@@ -951,3 +951,15 @@
   - 轮换的三个失效路径需要三层防御：事务防部分成功、行锁防并发争抢、条件更新防锁释放后二次消费，任何一层缺失都有漏洞
   - 高强度写入的文档型软件不应把 tsvector 计算压力转移到 DB 触发器，应用层显式判断 `searchableContentChanged` 后跳过计算更合适
   - 代码风格一致性 > 局部简洁性：QueryBuilder 虽冗长但与项目其他模块一致带来的可维护性收益大于原生 SQL 的局部简洁性，混用反而增加认知负担
+
+---
+
+## #53 集成测试清理遗漏独立 schema 与函数
+
+- **日期**：2026-09-22
+- **模块**：`apps/server/src/core-http.integration.test.ts`、`apps/server/src/modules/users/data-integrity.integration.test.ts`
+- **现象**：串行集成测试或重复运行时报 `agent_checkpoint` schema 或 `agent_storage_bytes` 函数已存在。
+- **根因**：TypeORM `dropDatabase()` 没有完整清除迁移创建的独立 schema 和函数；数据完整性测试还假设目标迁移始终是最后一条，新增 Agent 迁移后回退位置错误。
+- **修复**：仅在固定连接 `127.0.0.1:5433/syncbox_test` 的测试初始化与收尾中删除 checkpoint schema 并重建 public schema；按实际迁移序列回退至目标迁移之前，再重放并断言完整重放序列。不修改生产迁移。
+- **验证**：隔离 PostgreSQL、Redis、MinIO 环境连续两轮全套集成测试均为 23 通过、0 失败、0 跳过；结束后 Agent schema、public 表、Agent 函数数量均为 0。全仓 typecheck、server lint 与构建通过；全仓 lint 仍受未修改模块的既有问题阻塞。
+- **约束**：这两项测试会重置测试库 schema，必须串行执行且不能改为业务数据库连接。
