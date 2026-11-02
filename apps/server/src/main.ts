@@ -52,6 +52,10 @@ async function bootstrap(): Promise<void> {
     logger: console,
   });
 
+  // 让 SIGTERM/SIGINT 走进 Nest 的关闭流程：依次触发 onModuleDestroy → 关闭 HTTP server → 再自行重发信号退出。
+  // 不开启时容器收到 SIGTERM 会按默认处置立即杀死进程，各模块的 onModuleDestroy（如 AgentService 等待在途轮询落地）根本不执行。
+  app.enableShutdownHooks();
+
   const objectStorage = app.get(ObjectStorageService);
   app.use('/uploads', createUploadsMiddleware(objectStorage));
 

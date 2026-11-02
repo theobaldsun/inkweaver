@@ -57,11 +57,24 @@ export interface AgentGraphPorts {
   finish(answer: string, citations: AgentCitationBinding[]): Promise<void>;
 }
 
-/** 编译节点；运行时由受用户归属保护的调用入口提供 thread_id。 */
+/**
+ * 编译 Agent 执行图（蓝图），返回可被 runner 调用的编译图。
+ *
+ * 本函数只负责"声明图结构"：定义节点、边，以及节点依赖的外部能力（ports）。
+ * 不在此处执行任何业务写入——所有副作用都延迟到运行时经 ports 落地，
+ * 因此图可被独立单测，且状态（AgentGraphState）全程可序列化以便 checkpointer 落盘恢复。
+ *
+ * @param ports       节点依赖的外部能力实现（guard/model/tool/finish/artifact…），由 runner 注入
+ * @param checkpointer 检查点存储器，用于在节点之间持久化 State 以实现 interrupt/resume
+ * @param limits      执行护栏：maxRounds 限制模型轮数防止无限循环消耗；maxInputTokens 限制上下文体积
+ */
 export function createAgentGraph(ports: AgentGraphPorts, checkpointer: BaseCheckpointSaver,
   limits = { maxRounds: 10, maxInputTokens: 12000 }) {
+  // 护栏边界须经整数与上下界校验：轮数 1–50、token 下限 256，避免非法配置导致失控或误报。
   if (!Number.isInteger(limits.maxRounds) || limits.maxRounds < 1 || limits.maxRounds > 50
     || !Number.isInteger(limits.maxInputTokens) || limits.maxInputTokens < 256) throw new Error('INVALID_GRAPH_LIMITS');
+  // 上下文预算守卫：超限即抛错交由上层处理（不在此截断），因为超预算时 State 已写入 checkpoint，
+  // 上层可据此重试或降级，而非静默丢失进度。`messages.length * 8` 是每条消息固定开销的经验估算。
   const checkBudget = (messages: AgentModelMessage[], tools: ToolDefinition[]) => {
     if (estimateAgentTokens(JSON.stringify({ messages, tools: tools.map((tool) => ({
       name: tool.name, description: tool.description, parameters: tool.inputSchema,
@@ -85,9 +98,11 @@ export function createAgentGraph(ports: AgentGraphPorts, checkpointer: BaseCheck
     const result = await ports.model(messages, []);
     if (result.kind !== 'answer' || !result.text.trim()) throw new Error('AGENT_ARTIFACT_MODEL_RESULT_INVALID');
     validateAgentCitations(result.text, state.citations);
+    // 每产出一次模型结果轮数 +1，配合 maxRounds 阻止恢复后无限续跑。
     return kind === 'outline' ? { outline: result.text, round: state.round + 1 } : { answer: result.text, round: state.round + 1 };
   };
   return new StateGraph(AgentGraphState)
+    // 初始化节点：从业务记录装配初始上下文，并把轮次/回答/证据归零，作为一张新图的起点。
     .addNode('initialize', async () => {
       await ports.guard();
       return { ...await ports.initialize(), round: 0, answer: '', evidence: null };
@@ -99,6 +114,8 @@ export function createAgentGraph(ports: AgentGraphPorts, checkpointer: BaseCheck
       // 包括工具 Schema、参数和结果；不切断配对消息。超限保留检查点，交由上层处理。
       checkBudget(state.messages, tools);
       const decision = await ports.model(state.messages, tools);
+      // 模型若给出最终回答则写入 answer（走向终态/成果发布）；否则把工具调用作为 assistant 消息回灌，
+      // 进入 tools 节点执行，再回到 model 形成"思考—调用工具—再思考"的循环。
       return decision.kind === 'answer'
         ? { answer: decision.text, round: state.round + 1 }
         : { messages: [...state.messages, { role: 'assistant' as const, text: decision.text, toolCalls: decision.toolCalls }], round: state.round + 1 };
@@ -113,6 +130,8 @@ export function createAgentGraph(ports: AgentGraphPorts, checkpointer: BaseCheck
         await ports.guard();
         const version = state.versions[call.name];
         if (!version) throw new Error('GRAPH_TOOL_VERSION_MISSING');
+        // callKey 由"图版本:轮次:序号"固定生成：同一工具调用在恢复后重跑时 key 不变，
+        // 从而能复用已提交的副作用结果，而非重复执行写操作（如重复建文档）。
         let result = await ports.tool(call, version, `graph-v1:${state.round}:${index}`);
         while (result.status === 'paused') {
           // resume 值不是审批凭证。恢复会重跑本节点，并重新查询业务确认/执行记录。
@@ -120,6 +139,8 @@ export function createAgentGraph(ports: AgentGraphPorts, checkpointer: BaseCheck
           await ports.guard();
           result = await ports.tool(call, version, `graph-v1:${state.round}:${index}`);
         }
+        // 工具返回的来源标签做去重后并入 citations，并即时校验引用合法性，
+        // 保证后续生成/发布阶段引用的 [S序号] 都能在已知标签中找齐。
         if (result.citation) {
           const known = citations.find((binding) => binding.sourceId === result.citation!.sourceId && binding.label === result.citation!.label);
           if (!known) citations.push(result.citation);
@@ -161,17 +182,26 @@ export function createAgentGraph(ports: AgentGraphPorts, checkpointer: BaseCheck
       await ports.artifact.publish('draft', state.answer, state.citations, state.evidence);
       return {};
     })
+    // 终态节点：幂等提交可见回答与 Run 终态（已提交结果优先于 checkpoint），随后抵达 END。
     .addNode('finish', async (state) => {
       await ports.guard();
       await ports.finish(state.answer, state.citations);
       return {};
     })
+    // 固定边：START → initialize → model 完成最初装配与首轮决策。
     .addEdge(START, 'initialize').addEdge('initialize', 'model')
+    // model 后的条件路由：
+    //   - 已产出 answer：有 artifact 则进入成果流（修订模式直奔 draft；否则先提纲），否则直接 finish；
+    //   - 否则（模型要求调用工具）：进入 tools 执行后回到 model 继续循环。
     .addConditionalEdges('model', (state) => state.answer ? (ports.artifact ? (ports.artifact.revision ? 'draft' : 'generateOutline') : 'finish') : 'tools')
+    // 提纲流：generateOutline → publishOutline → draft（先生成入 checkpoint，再幂等发布）。
     .addEdge('generateOutline', 'publishOutline').addEdge('publishOutline', 'draft')
+    // draft 后路由：章节模式先 assembleSection，否则按需走 reviewEvidence，最终都到 publishDraft。
     .addConditionalEdges('draft', () => ports.artifact?.section ? 'assembleSection' : ports.artifact?.reviewEvidence ? 'reviewEvidence' : 'publishDraft')
     .addConditionalEdges('assembleSection', () => ports.artifact?.reviewEvidence ? 'reviewEvidence' : 'publishDraft')
+    // 证据审查后统一 publishDraft → finish，tools 节点执行完回到 model 形成思考循环，finish 抵达 END。
     .addEdge('reviewEvidence', 'publishDraft').addEdge('publishDraft', 'finish')
     .addEdge('tools', 'model').addEdge('finish', END)
+    // 编译时绑定 checkpointer：节点之间持久化 State，使 interrupt（人工确认）后可从断点恢复。
     .compile({ checkpointer });
 }

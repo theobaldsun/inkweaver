@@ -73,21 +73,30 @@ export class ToolPolicy {
    * @param context 可信的当前有效策略，不从用户消息直接反序列化取得。
    */
   evaluate(request: ToolPolicyRequest, context: ToolPolicyContext): ToolPolicyDecision {
+    // ① 身份校验：主体缺失或 userId 为空视为未认证；不披露后续注册详情。
     if (!context.principal || !context.principal.userId.trim()) {
       return { status: 'denied', reason: 'UNAUTHENTICATED' };
     }
+    // ② 工具白名单：显式 allowedTools 列表拦截，未列入直接拒绝（即使目录里有）。
     if (!context.allowedTools.includes(request.name)) return { status: 'denied', reason: 'TOOL_NOT_ALLOWED' };
+    // ③ 注册存在性：按名称查目录；若未注册返回 undefined，说明工具名无效或已下架。
     const tool = this.registry.get(request.name);
     if (!tool) return { status: 'denied', reason: 'TOOL_NOT_REGISTERED' };
+    // ④ 版本精确匹配：Run 固定 expectedVersion，防止模型/调用方自行切换版本。
     if (tool.version !== request.expectedVersion) return { status: 'denied', reason: 'VERSION_MISMATCH' };
+    // ⑤ 风险等级准入：默认仅允许 L0；context 显式配置后才开放 L1+；空数组全部关闭。
     if (!(context.allowedRiskLevels ?? ['L0']).includes(tool.riskLevel)) return { status: 'denied', reason: 'RISK_DISABLED' };
+    // ⑥ MCP 连接授权：mcp 类工具额外校验 connectionId 是否在当前用户获准列表内。
     if (tool.origin.kind === 'mcp' && !(context.allowedMcpConnections ?? []).includes(tool.origin.connectionId)) {
       return { status: 'denied', reason: 'CONNECTION_NOT_ALLOWED' };
     }
+    // ⑦ 业务权限：校验工具声明的 requiredPermissions 是否被当前主体全部持有。
     if (!tool.requiredPermissions.every((permission) => context.principal!.permissions.includes(permission))) {
       return { status: 'denied', reason: 'MISSING_PERMISSION' };
     }
+    // ⑧ 确认门槛：显式 requiresConfirmation 或风险等级非 L0 时，至少进入待确认态（不可直接执行）。
     if (tool.requiresConfirmation || tool.riskLevel !== 'L0') return { status: 'confirmation_required' };
+    // ⑨ 全部通过：允许调用（但仍需执行层做 Schema 校验与资源授权复核）。
     return { status: 'allowed' };
   }
 }

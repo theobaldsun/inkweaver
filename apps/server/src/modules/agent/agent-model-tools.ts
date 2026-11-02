@@ -58,29 +58,54 @@ export function validateModelToolCall(call: AgentModelToolCall): AgentModelToolC
 export function selectAgentModelTools(catalog: ToolCatalog, context: ToolPolicyContext,
   versions: Readonly<Record<string, string>>): ToolDefinition[] {
   const policy = new ToolPolicy(catalog);
-  return catalog.list().filter((tool) => tool.origin.kind === 'builtin' && tool.riskLevel === 'L0'
-    && Object.hasOwn(versions, tool.name) && versions[tool.name] === tool.version
-    && policy.evaluate({ name: tool.name, expectedVersion: tool.version }, context).status !== 'denied');
+  return catalog.list().filter((tool) => {
+    // 仅暴露内置工具（builtin），不暴露用户自定义或外部工具。
+    if (tool.origin.kind !== 'builtin') return false;
+    // 仅暴露 L0 只读工具；L1 写工具（如 create_document）不进入模型可见列表，由保存层直接接管。
+    if (tool.riskLevel !== 'L0') return false;
+    // 工具必须在当前 Run 的 versions 清单中，且版本号完全匹配。
+    if (!Object.hasOwn(versions, tool.name) || versions[tool.name] !== tool.version) return false;
+    // 按用户权限策略评估：principal/allowedTools/allowL1Write 等任一维度拒绝则排除。
+    const decision = policy.evaluate({ name: tool.name, expectedVersion: tool.version }, context);
+    return decision.status !== 'denied';
+  });
 }
 
-/** 转换消息并校验完整往返；不允许孤立、重复结果或未结算调用跨越下一条用户消息。 */
+/**
+ * 将内部 AgentModelMessage[] 转换为 LangChain BaseMessage[]，同时做完整往返校验。
+ *
+ * 校验规则（ReAct 消息流完整性）：
+ * 1. assistant 消息含 toolCalls → 记录每个 call.id 到 pending（待结算）。
+ * 2. tool 消息 → toolCallId 必须在 pending 中，匹配后移除（已结算）。
+ * 3. 非 tool 消息（system/user/assistant 纯文本）前，pending 必须为空——不允许未结算调用跨越下一条消息。
+ * 4. 不允许重复 call.id（seen 全局去重），不允许孤立 tool 结果（无对应 assistant 请求）。
+ *
+ * 这些规则保证发给供应商的消息序列是合法、可执行的 ReAct 往返。
+ */
 export function toAgentModelMessages(messages: AgentModelMessage[]): BaseMessage[] {
+  // 守卫：消息数组长度限制（至少 system+user 两条，最多 256 条防滥用）。
   if (!Array.isArray(messages) || messages.length < 2 || messages.length > 256) invalid();
-  const pending = new Set<string>();
-  const seen = new Set<string>();
+  const pending = new Set<string>();  // 已发出 tool_call 但尚未收到 tool_result 的 call.id
+  const seen = new Set<string>();     // 全局已见过的 call.id（防重复）
   const result: BaseMessage[] = [];
   for (const message of messages) {
     if (!message || typeof message.text !== 'string' || message.text.length > 2_000_000) invalid();
+    // ── tool 结果消息：必须对应一个已 pending 的 call.id，否则是孤立结果。
     if (message.role === 'tool') {
+      // delete 返回 true 表示确实在 pending 中（匹配成功）；false 表示无对应请求 → 孤立结果。
       if (!pending.delete(message.toolCallId)) invalid();
       result.push(new ToolMessage({ content: message.text, tool_call_id: message.toolCallId }));
       continue;
     }
+    // ── 非 tool 消息前：所有之前的 tool_call 必须已结算完毕（pending 为空）。
+    // 不允许未结算调用跨越下一条 system/user/assistant 消息——这是 ReAct 基本约束。
     if (pending.size) invalid();
+    // ── assistant 请求调用工具：校验每个 toolCall 并存入 pending。
     if (message.role === 'assistant' && message.toolCalls !== undefined) {
       if (!Array.isArray(message.toolCalls) || message.toolCalls.length < 1 || message.toolCalls.length > 8) invalid();
       const calls = message.toolCalls.map(validateModelToolCall);
       for (const call of calls) {
+        // 同一 Run 内不允许重复 call.id（即使跨轮次）。
         if (seen.has(call.id)) invalid();
         seen.add(call.id); pending.add(call.id);
       }
@@ -88,6 +113,7 @@ export function toAgentModelMessages(messages: AgentModelMessage[]): BaseMessage
         id: call.id, name: call.name, args: call.input, type: 'tool_call' as const,
       })) }));
     } else {
+      // ── 普通消息（system / user / assistant 纯文本）：text 必须非空（trim 后）。
       if (!message.text.trim()) invalid();
       if (message.role === 'system') result.push(new SystemMessage(message.text));
       else if (message.role === 'user') result.push(new HumanMessage(message.text));
@@ -95,6 +121,7 @@ export function toAgentModelMessages(messages: AgentModelMessage[]): BaseMessage
       else invalid();
     }
   }
+  // 遍历结束：所有 tool_call 必须已结算（有 tool 结果匹配并移除）。
   if (pending.size) invalid();
   return result;
 }

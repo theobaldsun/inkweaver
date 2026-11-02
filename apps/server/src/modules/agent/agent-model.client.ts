@@ -28,28 +28,51 @@ export type AgentModelDecision =
 
 export type AgentModelStepResult = AgentModelDecision & Omit<AgentModelResult, 'text'>;
 
-/** 统一拒绝供应商解析失败、未知工具或重复 ID；不将坏调用降级成普通回答。 */
+/**
+ * 解析供应商响应，判断模型意图：生成最终回答（answer）或请求调用工具（tool_calls）。
+ *
+ * 校验规则（严格拒绝，不降级）：
+ * 1. 存在 invalid_tool_calls → 直接拒绝（供应商解析失败）。
+ * 2. 无 tool_calls → 必须有非空文本回答，否则拒绝。
+ * 3. 有 tool_calls → 数量 ≤8；如果无文本内容，content 必须为空字符串或空数组（不能有其他奇怪内容）。
+ * 4. 每个 tool_call 必须有唯一 id，且名称必须在本次暴露的工具列表中。
+ * 5. 所有 tool_call 参数经过 validateModelToolCall 结构校验。
+ *
+ * 不将坏调用降级成普通回答——如果模型输出的工具调用有问题，直接报错让运行层重试或终态。
+ */
 export function parseAgentModelDecision(response: Pick<AIMessage, 'content' | 'tool_calls' | 'invalid_tool_calls'>,
   tools: readonly ToolDefinition[]): AgentModelDecision {
+  // 供应商解析失败的工具调用（如格式错误、缺少必要字段），直接拒绝。
   if (response.invalid_tool_calls?.length) throw new AgentModelError('AGENT_MODEL_OUTPUT_INVALID');
   const calls = response.tool_calls ?? [];
   const text = extractAgentModelText(response.content);
+
+  // ── 分支一：模型没有请求工具调用 → 返回 answer ──
   if (!calls.length) {
+    // 无 tool_calls 时必须有可见文本回答，不能是空内容。
     if (!text) throw new AgentModelError('AGENT_MODEL_OUTPUT_INVALID');
     return { kind: 'answer', text };
   }
+
+  // ── 分支二：模型请求调用工具 → 多重校验 ──
+  // 单步最多 8 个工具调用提议（不代表并发执行，只是模型一次提出的数量上限）。
+  // 如果 text 为 null（extractAgentModelText 失败），content 必须为空字符串或空数组，不能有其他内容。
   if (calls.length > 8 || (text === null && response.content !== '' && !(Array.isArray(response.content) && response.content.length === 0))) {
     throw new AgentModelError('AGENT_MODEL_OUTPUT_INVALID');
   }
+
   const seen = new Set<string>();
   try {
     const toolCalls = calls.map((call) => {
+      // call.id 必须存在且不重复；call.name 必须在本次暴露的工具列表中（模型不能调用没提供的工具）。
       if (!call.id || seen.has(call.id) || !tools.some((tool) => tool.name === call.name)) throw new AgentModelProtocolError();
       seen.add(call.id);
+      // 参数结构校验：id 格式、name 格式、input 类型、JSON 深度、大小等。
       return validateModelToolCall({ id: call.id, name: call.name, input: call.args });
     });
     return { kind: 'tool_calls', text: text ?? '', toolCalls };
   } catch {
+    // 统一包装：无论 validateModelToolCall 还是前面的校验失败，都输出稳定的 AGENT_MODEL_OUTPUT_INVALID。
     throw new AgentModelError('AGENT_MODEL_OUTPUT_INVALID');
   }
 }
@@ -155,8 +178,16 @@ export class AgentModelClient {
     return { text: result.text, model: result.model, usage: result.usage, latencyMs: result.latencyMs };
   }
 
-  /** 执行一次模型决策，不执行工具、不写入 Run 或 Checkpoint，也不隐藏循环/重试。 */
+  /**
+   * 执行一次模型决策：向供应商发请求 → 解析响应 → 返回 answer 或 tool_calls。
+   *
+   * 设计边界：
+   * - 只做"发请求+收响应"，不执行工具、不写 Run/Checkpoint、不隐藏循环/重试。
+   * - 重试由 Graph 运行层协调，SDK 层 maxRetries=0 避免隐式增加费用。
+   * - 所有异常统一为 AgentModelError，不泄漏供应商原始响应。
+   */
   async step(request: AgentModelStepRequest): Promise<AgentModelStepResult> {
+    // ── 阶段一：输入校验 ──
     if (!request || !Number.isInteger(request.maxOutputTokens) || request.maxOutputTokens < 1 || request.maxOutputTokens > 8192) {
       throw new AgentModelError('INVALID_AGENT_MODEL_INPUT');
     }
@@ -170,6 +201,8 @@ export class AgentModelClient {
     const timeoutMs = request.timeoutMs ?? 60000;
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 300000) throw new AgentModelError('INVALID_AGENT_MODEL_INPUT');
     if (request.signal?.aborted) throw new AgentModelError('AGENT_MODEL_CANCELLED');
+
+    // ── 阶段二：配置与预算校验 ──
     const cfg = this.configuredProfile();
     if (!cfg) throw new AgentModelError('AGENT_MODEL_NOT_CONFIGURED');
     // 上下文包括工具 Schema；估算只用于提前拒绝，不冒充供应商计费数据。
@@ -177,6 +210,8 @@ export class AgentModelClient {
     if (request.maxOutputTokens > cfg.limits.outputTokens || inputTokens + request.maxOutputTokens > cfg.limits.contextTokens ||
       (tools.length > 0 && !cfg.toolCalling)) throw new AgentModelError('INVALID_AGENT_MODEL_INPUT');
     const effectiveTimeout = Math.min(timeoutMs, cfg.timeoutMs);
+
+    // ── 阶段三：构造供应商客户端 ──
     const model = new ChatOpenAI({
       apiKey: cfg.apiKey,
       model: cfg.model,
@@ -187,10 +222,15 @@ export class AgentModelClient {
       maxTokens: request.maxOutputTokens,
       configuration: { baseURL: cfg.baseUrl },
     });
+
+    // ── 阶段四：超时与取消信号合成 ──
     const startedAt = Date.now();
     const timeout = AbortSignal.timeout(effectiveTimeout);
+    // 外部取消信号 + 内部超时信号合并：任一触发即中断请求。
     const signal = request.signal ? AbortSignal.any([request.signal, timeout]) : timeout;
     let observation: AgentModelObservation | undefined;
+
+    // ── 阶段五：调用供应商 ──
     try {
       // 只发函数名称、说明、参数 Schema；权限、来源、版本和执行句柄不发送给供应商。
       const runnable = tools.length ? model.bindTools(tools.map((tool) => ({
@@ -208,12 +248,15 @@ export class AgentModelClient {
         },
         latencyMs: Date.now() - startedAt,
       };
+      // 调用成功但信号已取消：模型可能返回部分结果，仍以取消处理，避免使用不完整输出。
       signal.throwIfAborted();
       return { ...parseAgentModelDecision(response, tools), ...observation };
     } catch (error) {
+      // 异常分类：用户取消 > 超时 > 已知业务错误 > 其他网络/供应商错误。
       const code = request.signal?.aborted ? 'AGENT_MODEL_CANCELLED'
         : timeout.aborted || (error instanceof Error && error.name === 'APIConnectionTimeoutError') ? 'AGENT_MODEL_TIMED_OUT'
         : error instanceof AgentModelError ? error.code : 'AGENT_MODEL_CALL_FAILED';
+      // observation 即使异常也保留（已收到响应时含用量数据），供审计层记录。
       throw new AgentModelError(code, { cause: error, observation });
     }
   }

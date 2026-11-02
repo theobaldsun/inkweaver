@@ -1,0 +1,59 @@
+<svg viewBox="0 0 680 660" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" role="img">
+  <title>工具执行三阶段 + L0/L1 双路径（中文注解）</title>
+  <desc>tools/tool-executor.ts：read-only 工具被拆成领取事务 / 事务外调用 / 结算事务三段；L0 只读走 ToolExecutor（租约），L1 写走 AgentDocumentWriter（单事务原子写）。</desc>
+  <rect width="680" height="660" fill="#fbfbfd"/>
+  <text x="24" y="34" font-size="20" font-weight="700" fill="#1f2328">工具执行：三阶段 + L0/L1 双路径（带中文注解）</text>
+  <text x="24" y="58" font-size="12.5" fill="#57606a">tools/tool-executor.ts：read-only 工具被刻意拆成「事务内 / 事务外 / 事务内」三段。执行器要求传入「根 manager」（未开事务），自己再开事务。</text>
+
+  <!-- 双路径说明 -->
+  <rect x="24" y="72" width="632" height="48" rx="8" fill="#eef2ff" stroke="#3b5bdb"/>
+  <text x="40" y="94" font-size="13" fill="#1f2328"><tspan font-weight="700">L0 只读工具</tspan>（如 read-document）→ 走 ToolExecutor：带租约、适配器在事务外、可崩溃恢复</text>
+  <text x="40" y="112" font-size="13" fill="#1f2328"><tspan font-weight="700">L1 写工具</tspan>（create_document）→ 走 AgentDocumentWriter：单事务原子写、无外部适配器、无租约（纯本地 SQL）</text>
+
+  <!-- 阶段1 领取事务 -->
+  <rect x="24" y="138" width="632" height="118" rx="10" fill="#e7f5ff" stroke="#1c7ed6"/>
+  <text x="40" y="162" font-size="14.5" font-weight="700" fill="#1971c2">① 领取事务（manager.transaction 内，一次性提交）</text>
+  <text x="40" y="186" font-size="12.5" fill="#1f2328">lockAgentOwner(userId) → ToolAuthorization.recheck 重校验策略/资源</text>
+  <text x="40" y="208" font-size="12.5" fill="#1f2328">resolve 工具：仅 builtin / L0 / 只读 / timeoutMs≤60000，否则 EXECUTION_NOT_SUPPORTED</text>
+  <text x="40" y="230" font-size="12.5" fill="#1f2328">预算检查（toolCallLimit - 已占 ≥ 0）→ ToolCallStore.transition(START)</text>
+  <text x="40" y="248" font-size="12.5" fill="#1f2328">给当前 Attempt 上 leaseExpiresAt（限时占有权）+ 插入 budget RESERVED</text>
+
+  <!-- 箭头 -->
+  <path d="M340 256 L340 276" stroke="#495057" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- 阶段2 事务外调用 -->
+  <rect x="24" y="276" width="632" height="150" rx="10" fill="#fff4e6" stroke="#f08c00"/>
+  <text x="40" y="300" font-size="14.5" font-weight="700" fill="#e8590c">② 事务外调用（已提交，无 DB 事务保护）</text>
+  <text x="40" y="324" font-size="12.5" fill="#1f2328">重新 resolve 执行函数（TOOL_REPLACED 守卫：目录被换则作废）</text>
+  <text x="40" y="346" font-size="12.5" fill="#1f2328">写 invocationStartedAt 作为「调用边界」：若取消已提交则不越过、释放预算</text>
+  <text x="40" y="368" font-size="12.5" fill="#1f2328">启动心跳续租（每 heartbeatIntervalMs 延长 leaseExpiresAt，可跨进程取消）</text>
+  <text x="40" y="390" font-size="12.5" fill="#1f2328">Promise.race：真正调适配器  vs  超时定时器（timeoutMs）</text>
+  <text x="40" y="412" font-size="12.5" fill="#1f2328">结果校验：体积上限 / 输出 schema；signal.aborted 记 TOOL_TIMEOUT / TOOL_CANCELLED</text>
+
+  <!-- 箭头 -->
+  <path d="M340 426 L340 446" stroke="#495057" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- 阶段3 结算事务 -->
+  <rect x="24" y="446" width="632" height="142" rx="10" fill="#ebfbee" stroke="#2f9e44"/>
+  <text x="40" y="470" font-size="14.5" font-weight="700" fill="#2b8a3e">③ 结算事务（manager.transaction 内，校验租约后提交）</text>
+  <text x="40" y="494" font-size="12.5" fill="#1f2328">复核：call=EXECUTING &amp; attempt=STARTED &amp; leaseOwner=本worker &amp; 未过期</text>
+  <text x="40" y="514" font-size="12.5" fill="#1f2328">　　否则 EXECUTION_CLAIM_LOST（过期/被抢 → 由维护任务接管，本worker不提交）</text>
+  <text x="40" y="536" font-size="12.5" fill="#1f2328">判定事件：SUCCEEDED / FAILED / RETRY_SCHEDULED(safe可重试) / STOPPED_WITHOUT_EFFECT</text>
+  <text x="40" y="558" font-size="12.5" fill="#1f2328">ToolCallStore.transition → 写 agent_tool_results → 预算结算(SETTLED/RELEASED) → 清 leaseOwner</text>
+  <text x="40" y="578" font-size="12.5" fill="#1f2328">若 RETRY_SCHEDULED：同事务写 retryNotBefore（维护扫描到点后回到 READY 重跑）</text>
+
+  <!-- 重试回路 -->
+  <path d="M600 517 C 650 480, 650 240, 600 197" stroke="#868e96" stroke-width="2" stroke-dasharray="5 4" fill="none" marker-end="url(#a)"/>
+  <text x="612" y="360" font-size="11.5" fill="#495057" transform="rotate(90 612 360)">execute() 循环：RETRY_WAIT → waitUntilRetryDue</text>
+
+  <!-- 底部说明 -->
+  <rect x="24" y="600" width="632" height="46" rx="8" fill="#f1f3f5" stroke="#ced4da"/>
+  <text x="40" y="620" font-size="12" fill="#1f2328"><tspan font-weight="700">崩溃恢复</tspan>：进程挂了 → lease 过期 → tick 内 ToolExecutionMaintenance.recoverExpiredAll 接管，</text>
+  <text x="40" y="638" font-size="12" fill="#1f2328">按「是否真正发起过调用 + 是否 safe 只读」决定 OUTCOME_UNKNOWN→重试 或 直接 FAILED。</text>
+
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#495057"/>
+    </marker>
+  </defs>
+</svg>

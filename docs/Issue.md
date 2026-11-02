@@ -963,3 +963,26 @@
 - **修复**：仅在固定连接 `127.0.0.1:5433/syncbox_test` 的测试初始化与收尾中删除 checkpoint schema 并重建 public schema；按实际迁移序列回退至目标迁移之前，再重放并断言完整重放序列。不修改生产迁移。
 - **验证**：隔离 PostgreSQL、Redis、MinIO 环境连续两轮全套集成测试均为 23 通过、0 失败、0 跳过；结束后 Agent schema、public 表、Agent 函数数量均为 0。全仓 typecheck、server lint 与构建通过；全仓 lint 仍受未修改模块的既有问题阻塞。
 - **约束**：这两项测试会重置测试库 schema，必须串行执行且不能改为业务数据库连接。
+
+---
+
+## #54 【设计债务】Guard-by-SideEffect 反模式：用"主流程函数"的守卫逻辑当"纯校验器"
+
+- **日期**：2026-10-29
+- **模块**：`apps/server/src/modules/agent` 全模块
+- **现象**：多处调用 `loadAgentRevision`、`inspectToolResources` 等函数后**丢弃返回值**，仅依赖函数内部的权限/存在性校验抛出异常来阻止流程继续。函数主职责是"加载"或"检查并返回快照"，调用方却只用其副作用（守卫）当分支条件。
+- **根因**：早期实现时把守卫逻辑和主流程逻辑耦合在同一个函数里，后续复用时图省事直接复用原函数，没有拆分出独立的纯校验函数。
+- **影响**：
+  - **阅读成本**：看到 `await loadAgentRevision(...)` 读者预期下面会用返回值，结果没有，需要倒推意图
+  - **性能浪费**：`loadAgentRevision` 查版本表+查来源权限+返回大对象；`inspectToolResources` 查 documents 表+SHA-256 摘要计算——只做校验时这些都是浪费
+  - **难以复用**：新场景想加同样检查只能再调一次完整函数
+  - **隐式契约风险**：主逻辑改动时可能意外破坏守卫语义
+- **涉及文件与调用点**：
+  - `agent-artifact-revision.ts`：`loadAgentRevision` 被 2 处丢弃返回值使用（`agent-graph.runner.ts:235 model 端口`、`原 initialize 已优化`）
+  - `tools/tool-resources.ts`：`inspectToolResources` 全仓库 8 处调用，7 处丢弃返回值（仅 `tool-authorization.ts:166` 使用快照生成 bindingDigest）
+  - `agent-artifact.store.ts`：`publish` 内部也调用 `inspectToolResources`，同样模式
+- **修复方向**：职责分离
+  - `loadAgentRevision` → 拆为 `assertRevisionAccessible(manager, run, scope)`（纯校验）+ `loadAgentRevision(...)`（校验+返回内容）
+  - `inspectToolResources` → 拆为 `assertToolResourcesAccessible(...)`（纯校验）+ `inspectToolResources(...)`（校验+返回快照）
+  - 调用方按需选择：只要校验用前者，需要数据用后者
+- **验证**：逐文件确认所有调用点语义正确；typecheck + lint + 相关测试通过

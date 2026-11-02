@@ -48,21 +48,46 @@ export class ToolAuthorization {
   /** manager 可来自上层领取事务，Catalog 必须与准备/执行共用。 */
   constructor(private readonly manager: EntityManager, private readonly catalog: ToolCatalog) {}
 
-  /** 创建授权状态与确认记录；同调用重复请求不刷新有效期。ttlMs 为服务端配置，1～30 分钟。 */
+  /**
+   * 创建授权状态与确认记录：复核策略/参数/资源后，推进工具调用状态到可执行。
+   *
+   * 流程：
+   * 1. TTL 校验（1～30 分钟）。
+   * 2. 加载工具调用记录，检查状态是否可授权（PREPARED / WAITING_CONFIRMATION / READY）。
+   * 3. inspect：复核身份、工具 Origin、参数策略、资源访问权，生成 digest + resources 快照。
+   * 4. 查找已有确认记录：
+   *    - 需要确认：digest 变化 → 报错；无记录 → 创建 PENDING 确认。
+   *    - 不需要确认：confirmation 为 null。
+   * 5. PREPARED → transition 到 WAITING_CONFIRMATION（需要确认）或 READY（不需要确认）。
+   *
+   * 幂等：同调用重复请求不刷新有效期；已 READY 直接返回。
+   */
   async authorize(userId: string, runId: string, callId: string, context: ToolAuthorizationContext, ttlMs = 300000): Promise<{ call: AgentToolCall; confirmation: AgentConfirmation | null }> {
     if (!Number.isInteger(ttlMs) || ttlMs < 60000 || ttlMs > 1800000) throw new Error('INVALID_CONFIRMATION_TTL');
     const snapshot = structuredClone(context);
+
     return this.manager.transaction('READ COMMITTED', async (manager) => {
       await lockAgentOwner(manager, userId);
       const store = new ToolCallStore(manager);
+
+      // 加载工具调用记录；不可授权状态直接拒绝。
       let call = await this.load(manager, userId, runId, callId);
       if (!['PREPARED', 'WAITING_CONFIRMATION', 'READY'].includes(call.status)) throw new Error('CALL_NOT_AUTHORIZABLE');
+
+      // inspect：复核策略、参数、资源，生成绑定摘要（digest）。
       const checked = await this.inspect(manager, call, snapshot);
+
+      // 查找是否已有确认记录（可能之前授权过但尚未执行）。
       let confirmation = await this.find(manager, userId, runId, callId);
+
+      // ── 需要人工确认的分支（L1+ 写工具或 requiresConfirmation=true）──
       if (call.requiresConfirmation) {
+        // digest 变了说明参数/资源/权限在授权期间发生了变化，旧确认失效。
         if (confirmation && confirmation.digest !== checked.digest) throw new Error('CONFIRMATION_BINDING_CHANGED');
         if (!confirmation) {
+          // 首次授权：只有 PREPARED 状态才能创建确认；如果已进入 WAITING_CONFIRMATION 却没有确认记录，说明数据不一致。
           if (call.status !== 'PREPARED') throw new Error('CONFIRMATION_REQUIRED');
+          // 创建 PENDING 确认记录：含 digest（防篡改）和 resources 快照（供前端展示）。
           const rows = await manager.query(`INSERT INTO agent_confirmations
             (id, "callId", "runId", "userId", digest, resources, status, "expiresAt")
             VALUES ($1,$2,$3,$4,$5,$6::jsonb,'PENDING',clock_timestamp() + $7 * interval '1 millisecond') RETURNING *`,
@@ -70,6 +95,9 @@ export class ToolAuthorization {
           confirmation = rows[0];
         }
       }
+
+      // PREPARED → 推进状态：RESOURCES_APPROVED 事件驱动状态机转换。
+      // 不需要确认时 → READY；需要确认时 → WAITING_CONFIRMATION。
       if (call.status === 'PREPARED') call = await store.transition(userId, runId, callId, call.revision, { type: 'RESOURCES_APPROVED' });
       return { call, confirmation };
     });

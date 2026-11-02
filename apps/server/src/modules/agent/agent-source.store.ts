@@ -34,12 +34,22 @@ export class AgentSourceStoreError extends Error {
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** 文档版本参与去重，同一 Run 看到新版本时保留新的快照。 */
+/**
+ * 生成来源唯一键，用于同一 Run 内的幂等去重。
+ *
+ * 设计：docId + documentUpdatedAt + 内容摘要(title/excerpt/kind) 三段拼接。
+ * 同一文档的同一版本+同一内容 → 相同 sourceKey → INSERT OR IGNORE 跳过；
+ * 文档更新后 documentUpdatedAt 变化 → 新 sourceKey → 新快照保留。
+ */
 function sourceKey(source: CaptureAgentSource): string {
   const digest = createHash('sha256').update(JSON.stringify([source.title, source.excerpt, source.retrievalKind])).digest('hex');
   return `doc:${source.docId}@${source.documentUpdatedAt.toISOString()}:${digest}`;
 }
 
+/**
+ * 来源列表的结构守卫：UUID 格式、字段类型、长度上限、score 范围。
+ * 任何参数越界统一抛 INVALID_AGENT_SOURCE_INPUT，不暴露其他用户数据存在性。
+ */
 function validateSources(userId: string, runId: string, sources: CaptureAgentSource[]): void {
   if (!uuid.test(userId) || !uuid.test(runId) || !Array.isArray(sources) || sources.length > 20) {
     throw new AgentSourceStoreError('INVALID_AGENT_SOURCE_INPUT');
@@ -66,6 +76,7 @@ export class AgentSourceStore {
     validateSources(userId, runId, sources);
     return this.manager.transaction('READ COMMITTED', async (manager) => {
       await lockAgentOwner(manager, userId);
+      // 仅 RUNNING 状态的 Run 允许新增来源；终态 Run 的来源表只读，防止事后篡改审计。
       const rows: Array<{ id: string }> = await manager.query(
         `SELECT id FROM agent_runs WHERE id=$1 AND "userId"=$2 AND status='RUNNING' FOR UPDATE`,
         [runId, userId],
@@ -75,11 +86,13 @@ export class AgentSourceStore {
       const repository = manager.getRepository(AgentRunSource);
       const captured: AgentRunSource[] = [];
       for (const source of sources) {
-        await repository.createQueryBuilder().insert().into(AgentRunSource).values({
+        // 幂等插入：同一 sourceKey（docId+版本时间+内容摘要）已存在时 orIgnore 跳过，不抛重复错误。
+        await repository.createQueryBuilder().insert().values({
           id: randomUUID(), runId, userId, docId: source.docId, sourceKey: sourceKey(source),
           retrievalKind: source.retrievalKind, title: source.title.trim(), excerpt: source.excerpt,
           documentUpdatedAt: source.documentUpdatedAt, score: source.score, usedInContext: false, cited: false,
         }).orIgnore().execute();
+        // 读回刚插入或已存在的完整行，确保 captured 包含数据库生成的 id 等字段。
         captured.push(await repository.findOneByOrFail({ runId, userId, sourceKey: sourceKey(source) }));
       }
       return captured;

@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 520">
+  <rect x="0" y="0" width="680" height="520" fill="#ffffff"/>
+  <text x="340" y="30" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="bold" fill="#1a1a1a">AgentRun 写入分层：AgentRunStore（原语）↔ AgentRunWriter（事务组合）</text>
+  <text x="340" y="50" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#555">同样“写库”，但职责不同：Store 只改一行；Writer 把“改行 + 记事件 + 用户锁”包成一笔事务</text>
+
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#444"/>
+    </marker>
+    <marker id="arrowB" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#2D6CB5"/>
+    </marker>
+    <marker id="arrowO" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#C77B30"/>
+    </marker>
+    <marker id="arrowG" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#2E8B57"/>
+    </marker>
+  </defs>
+
+  <!-- 标准组合调用方 -->
+  <rect x="30" y="74" width="195" height="150" rx="8" fill="#E8F1FB" stroke="#2D6CB5" stroke-width="2"/>
+  <text x="127" y="96" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="bold" fill="#2D6CB5">标准组合调用方</text>
+  <text x="127" y="114" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#333">（各取同一套固定动作）</text>
+  <text x="127" y="140" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#333">• agent-graph.runner</text>
+  <text x="127" y="160" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#333">• agent-save.service</text>
+  <text x="127" y="180" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#333">• agent.service（取消）</text>
+  <text x="127" y="205" text-anchor="middle" font-family="sans-serif" font-size="10.5" fill="#666">都想要“改状态+记事件+加锁”</text>
+
+  <!-- 会话创建（更大事务） -->
+  <rect x="440" y="74" width="210" height="150" rx="8" fill="#FBF0E0" stroke="#C77B30" stroke-width="2"/>
+  <text x="545" y="96" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="bold" fill="#C77B30">会话创建（更大事务）</text>
+  <text x="545" y="118" text-anchor="middle" font-family="sans-serif" font-size="10.5" fill="#333">appendUserMessageAndCreateRun</text>
+  <text x="545" y="138" text-anchor="middle" font-family="sans-serif" font-size="10.5" fill="#333">同一笔事务里还要：</text>
+  <text x="545" y="156" text-anchor="middle" font-family="sans-serif" font-size="10.5" fill="#333">写 Message · 幂等去重</text>
+  <text x="545" y="172" text-anchor="middle" font-family="sans-serif" font-size="10.5" fill="#333">回填 runId · 写 RUN_CREATED</text>
+  <text x="545" y="200" text-anchor="middle" font-family="sans-serif" font-size="10.5" fill="#666">直接复用 Store 作为其中一步</text>
+
+  <!-- 调用方到 Writer / Store 的箭头 -->
+  <path d="M225,150 C255,200 250,225 270,250" fill="none" stroke="#2D6CB5" stroke-width="2" marker-end="url(#arrowB)"/>
+  <text x="243" y="205" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#2D6CB5">调 create/transition</text>
+  <path d="M450,150 C405,200 365,225 330,250" fill="none" stroke="#C77B30" stroke-width="2" marker-end="url(#arrowO)"/>
+  <text x="378" y="200" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#C77B30">直接 new Store</text>
+
+  <!-- Writer -->
+  <rect x="60" y="250" width="210" height="130" rx="8" fill="#E7F6EC" stroke="#2E8B57" stroke-width="2"/>
+  <text x="165" y="272" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="bold" fill="#2E8B57">AgentRunWriter（事务入口）</text>
+  <text x="165" y="294" text-anchor="middle" font-family="sans-serif" font-size="10.5" fill="#333">manager.transaction 内依次：</text>
+  <text x="165" y="314" text-anchor="middle" font-family="sans-serif" font-size="10.5" fill="#333">① lockAgentOwner（用户锁）</text>
+  <text x="165" y="332" text-anchor="middle" font-family="sans-serif" font-size="10.5" fill="#333">② AgentRunStore 改行</text>
+  <text x="165" y="350" text-anchor="middle" font-family="sans-serif" font-size="10.5" fill="#333">③ appendAgentEvent 记事件</text>
+  <text x="165" y="370" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#2E8B57">三者同提交 / 同回滚</text>
+
+  <!-- Store -->
+  <rect x="410" y="250" width="240" height="130" rx="8" fill="#FBF0E0" stroke="#C77B30" stroke-width="2"/>
+  <text x="530" y="272" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="bold" fill="#C77B30">AgentRunStore（低层原语）</text>
+  <text x="530" y="294" text-anchor="middle" font-family="sans-serif" font-size="10.5" fill="#333">create → INSERT 一行</text>
+  <text x="530" y="310" text-anchor="middle" font-family="sans-serif" font-size="10.5" fill="#333">（CREATED, revision=0）</text>
+  <text x="530" y="330" text-anchor="middle" font-family="sans-serif" font-size="10.5" fill="#333">transition → 行级 CAS 条件 UPDATE</text>
+  <text x="530" y="346" text-anchor="middle" font-family="sans-serif" font-size="10.5" fill="#333">WHERE status=旧 AND revision=旧</text>
+  <text x="530" y="368" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#C77B30">不写事件·不加锁·不自己连库</text>
+
+  <!-- Writer -> Store -->
+  <path d="M270,315 L408,315" fill="none" stroke="#2E8B57" stroke-width="2" marker-end="url(#arrowG)"/>
+  <text x="339" y="308" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#2E8B57">委托</text>
+
+  <!-- 辅助原语：lock / event -->
+  <rect x="60" y="410" width="160" height="38" rx="6" fill="#F0EBFB" stroke="#7A4FB5" stroke-width="2"/>
+  <text x="140" y="427" text-anchor="middle" font-family="sans-serif" font-size="10.5" fill="#7A4FB5">lockAgentOwner</text>
+  <text x="140" y="442" text-anchor="middle" font-family="sans-serif" font-size="9.5" fill="#333">用户级串行锁（跨调用方复用）</text>
+
+  <rect x="235" y="410" width="175" height="38" rx="6" fill="#F0EBFB" stroke="#7A4FB5" stroke-width="2"/>
+  <text x="322" y="427" text-anchor="middle" font-family="sans-serif" font-size="10.5" fill="#7A4FB5">appendAgentEvent</text>
+  <text x="322" y="442" text-anchor="middle" font-family="sans-serif" font-size="9.5" fill="#333">通用事件账本（Run/ToolCall 共用）</text>
+
+  <!-- Writer -> 辅助 -->
+  <path d="M140,380 L140,408" fill="none" stroke="#2E8B57" stroke-width="1.5" marker-end="url(#arrowG)"/>
+  <path d="M225,380 C250,400 290,400 322,408" fill="none" stroke="#2E8B57" stroke-width="1.5" marker-end="url(#arrowG)"/>
+
+  <!-- 数据库表 -->
+  <rect x="410" y="410" width="240" height="44" rx="6" fill="#EEEEEE" stroke="#888" stroke-width="2"/>
+  <text x="530" y="432" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="bold" fill="#333">agent_runs（Run 行）</text>
+  <text x="530" y="447" text-anchor="middle" font-family="sans-serif" font-size="9.5" fill="#555">status 列 + revision 列（CAS 防并发）</text>
+
+  <rect x="60" y="465" width="250" height="44" rx="6" fill="#EEEEEE" stroke="#888" stroke-width="2"/>
+  <text x="185" y="487" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="bold" fill="#333">agent_events（事件账本）</text>
+  <text x="185" y="502" text-anchor="middle" font-family="sans-serif" font-size="9.5" fill="#555">(runId, sequence) 有序游标 · SSE 回放</text>
+
+  <!-- 辅助 -> DB -->
+  <path d="M530,380 L530,408" fill="none" stroke="#C77B30" stroke-width="1.5" marker-end="url(#arrowO)"/>
+  <path d="M322,448 C280,455 230,455 185,463" fill="none" stroke="#7A4FB5" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- 图例 -->
+  <text x="30" y="505" font-family="sans-serif" font-size="9.5" fill="#888">绿色=Writer（事务组合）　橙色=Store（低层原语）　蓝=标准组合调用方　紫=通用辅助原语</text>
+</svg>

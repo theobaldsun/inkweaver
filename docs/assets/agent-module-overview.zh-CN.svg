@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="780" viewBox="0 0 1040 780" font-family="Microsoft YaHei">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#37474f"></path>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1040" height="780" fill="#fafafa"></rect>
+
+  <text x="520" y="30" text-anchor="middle" font-size="18" font-weight="bold" fill="#1a1a1a">InkWeaver Agent 模块 · 端到端架构（面试讲稿底稿）</text>
+
+  <!-- 列标题 -->
+  <text x="120" y="62" text-anchor="middle" font-size="14" font-weight="bold" fill="#1565c0">前端层</text>
+  <text x="340" y="62" text-anchor="middle" font-size="14" font-weight="bold" fill="#e65100">传输层 REST / SSE</text>
+  <text x="585" y="62" text-anchor="middle" font-size="14" font-weight="bold" fill="#2e7d32">Agent 模块 (NestJS)</text>
+  <text x="845" y="62" text-anchor="middle" font-size="14" font-weight="bold" fill="#6a1b9a">外部依赖</text>
+
+  <!-- A 前端层 -->
+  <rect x="20" y="80" width="200" height="470" rx="8" fill="#e3f2fd" stroke="#1e88e5" stroke-width="1.5"></rect>
+  <rect x="35" y="100" width="170" height="60" rx="6" fill="#ffffff" stroke="#1e88e5"></rect>
+  <text x="120" y="125" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">对话 / 流式 UI</text>
+  <text x="120" y="145" text-anchor="middle" font-size="10" fill="#555">消息流 + 步骤条</text>
+
+  <rect x="35" y="175" width="170" height="60" rx="6" fill="#ffffff" stroke="#1e88e5"></rect>
+  <text x="120" y="200" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">人工确认面板</text>
+  <text x="120" y="220" text-anchor="middle" font-size="10" fill="#555">批准 / 拒绝</text>
+
+  <rect x="35" y="250" width="170" height="60" rx="6" fill="#ffffff" stroke="#1e88e5"></rect>
+  <text x="120" y="275" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">版本 / Diff 视图</text>
+  <text x="120" y="295" text-anchor="middle" font-size="10" fill="#555">高亮修订区间</text>
+
+  <rect x="35" y="325" width="170" height="60" rx="6" fill="#ffffff" stroke="#1e88e5"></rect>
+  <text x="120" y="350" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">文档预览 (TipTap)</text>
+  <text x="120" y="370" text-anchor="middle" font-size="10" fill="#555">多格式报告</text>
+
+  <rect x="35" y="400" width="170" height="60" rx="6" fill="#ffffff" stroke="#1e88e5"></rect>
+  <text x="120" y="425" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">Yjs 本地优先</text>
+  <text x="120" y="445" text-anchor="middle" font-size="10" fill="#555">离线编辑 / 缓存</text>
+
+  <!-- B 传输层 -->
+  <rect x="250" y="80" width="180" height="470" rx="8" fill="#fff3e0" stroke="#fb8c00" stroke-width="1.5"></rect>
+  <rect x="265" y="100" width="150" height="70" rx="6" fill="#ffffff" stroke="#fb8c00"></rect>
+  <text x="340" y="125" text-anchor="middle" font-size="12" font-weight="bold" fill="#1a1a1a">提交请求</text>
+  <text x="340" y="145" text-anchor="middle" font-size="10" fill="#555">POST /messages</text>
+  <text x="340" y="160" text-anchor="middle" font-size="9" fill="#888">mode: dialogue/task</text>
+
+  <rect x="265" y="185" width="150" height="70" rx="6" fill="#ffffff" stroke="#fb8c00"></rect>
+  <text x="340" y="210" text-anchor="middle" font-size="12" font-weight="bold" fill="#1a1a1a">快照(基准全量)</text>
+  <text x="340" y="230" text-anchor="middle" font-size="10" fill="#555">GET runs/:id</text>
+  <text x="340" y="245" text-anchor="middle" font-size="9" fill="#888">打开/重连先读</text>
+
+  <rect x="265" y="270" width="150" height="70" rx="6" fill="#ffffff" stroke="#fb8c00"></rect>
+  <text x="340" y="295" text-anchor="middle" font-size="12" font-weight="bold" fill="#1a1a1a">SSE 增量事件</text>
+  <text x="340" y="315" text-anchor="middle" font-size="10" fill="#555">GET runs/:id/stream</text>
+  <text x="340" y="330" text-anchor="middle" font-size="9" fill="#888">续传 / ≤4并发</text>
+
+  <rect x="265" y="355" width="150" height="70" rx="6" fill="#ffffff" stroke="#fb8c00"></rect>
+  <text x="340" y="380" text-anchor="middle" font-size="12" font-weight="bold" fill="#1a1a1a">人工确认</text>
+  <text x="340" y="400" text-anchor="middle" font-size="10" fill="#555">POST conf</text>
+  <text x="340" y="415" text-anchor="middle" font-size="9" fill="#888">accept: true</text>
+
+  <rect x="265" y="440" width="150" height="70" rx="6" fill="#ffffff" stroke="#fb8c00"></rect>
+  <text x="340" y="465" text-anchor="middle" font-size="12" font-weight="bold" fill="#1a1a1a">保存确认</text>
+  <text x="340" y="485" text-anchor="middle" font-size="10" fill="#555">POST saves</text>
+  <text x="340" y="500" text-anchor="middle" font-size="9" fill="#888">两阶段提交</text>
+
+  <!-- C Agent 模块 -->
+  <rect x="450" y="80" width="270" height="560" rx="8" fill="#e8f5e9" stroke="#43a047" stroke-width="1.5"></rect>
+  <rect x="465" y="100" width="240" height="55" rx="6" fill="#ffffff" stroke="#43a047"></rect>
+  <text x="585" y="122" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">AgentController</text>
+  <text x="585" y="140" text-anchor="middle" font-size="10" fill="#555">鉴权 + 稳定错误码过滤</text>
+
+  <rect x="465" y="165" width="240" height="55" rx="6" fill="#ffffff" stroke="#43a047"></rect>
+  <text x="585" y="187" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">AgentService</text>
+  <text x="585" y="205" text-anchor="middle" font-size="10" fill="#555">submit / cancel / tick 调度</text>
+
+  <rect x="465" y="230" width="240" height="55" rx="6" fill="#ffffff" stroke="#43a047"></rect>
+  <text x="585" y="252" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">AgentGraphRunner</text>
+  <text x="585" y="270" text-anchor="middle" font-size="10" fill="#555">LangGraph 编排</text>
+
+  <rect x="465" y="295" width="240" height="55" rx="6" fill="#ffffff" stroke="#43a047"></rect>
+  <text x="585" y="317" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">Run 状态机</text>
+  <text x="585" y="335" text-anchor="middle" font-size="10" fill="#555">AgentRunWriter / Store</text>
+
+  <rect x="465" y="360" width="240" height="55" rx="6" fill="#ffffff" stroke="#43a047"></rect>
+  <text x="585" y="382" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">ToolCall 状态机</text>
+  <text x="585" y="400" text-anchor="middle" font-size="10" fill="#555">PREPARED→…→SUCCEEDED</text>
+
+  <rect x="465" y="425" width="240" height="55" rx="6" fill="#ffffff" stroke="#43a047"></rect>
+  <text x="585" y="447" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">AgentSaveService</text>
+  <text x="585" y="465" text-anchor="middle" font-size="10" fill="#555">prepare / execute 两阶段</text>
+
+  <rect x="465" y="490" width="240" height="55" rx="6" fill="#ffffff" stroke="#43a047"></rect>
+  <text x="585" y="512" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">AgentEventWriter</text>
+  <text x="585" y="530" text-anchor="middle" font-size="10" fill="#555">事件溯源 / 可审计</text>
+
+  <rect x="465" y="555" width="240" height="55" rx="6" fill="#ffffff" stroke="#43a047"></rect>
+  <text x="585" y="577" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">AgentArtifactRevision</text>
+  <text x="585" y="595" text-anchor="middle" font-size="10" fill="#555">版本坐标 + 冲突检测</text>
+
+  <!-- D 外部依赖 -->
+  <rect x="745" y="80" width="200" height="470" rx="8" fill="#f3e5f5" stroke="#8e24aa" stroke-width="1.5"></rect>
+  <rect x="760" y="100" width="170" height="70" rx="6" fill="#ffffff" stroke="#8e24aa"></rect>
+  <text x="845" y="125" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">AuthModule</text>
+  <text x="845" y="145" text-anchor="middle" font-size="10" fill="#555">JWT access/refresh</text>
+
+  <rect x="760" y="185" width="170" height="70" rx="6" fill="#ffffff" stroke="#8e24aa"></rect>
+  <text x="845" y="210" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">AiModule</text>
+  <text x="845" y="230" text-anchor="middle" font-size="10" fill="#555">RAG / 嵌入 / 索引</text>
+
+  <rect x="760" y="270" width="170" height="70" rx="6" fill="#ffffff" stroke="#8e24aa"></rect>
+  <text x="845" y="295" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">SearchModule</text>
+  <text x="845" y="315" text-anchor="middle" font-size="10" fill="#555">知识检索</text>
+
+  <rect x="760" y="355" width="170" height="70" rx="6" fill="#ffffff" stroke="#8e24aa"></rect>
+  <text x="845" y="380" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">LangGraph 检查点</text>
+  <text x="845" y="400" text-anchor="middle" font-size="10" fill="#555">PostgreSQL 持久化</text>
+
+  <rect x="760" y="440" width="170" height="70" rx="6" fill="#ffffff" stroke="#8e24aa"></rect>
+  <text x="845" y="465" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">BullMQ</text>
+  <text x="845" y="485" text-anchor="middle" font-size="10" fill="#555">邮件 / 向量索引队列</text>
+
+  <!-- 存储 -->
+  <rect x="20" y="660" width="925" height="105" rx="8" fill="#eceff1" stroke="#546e7a" stroke-width="1.5"></rect>
+  <rect x="40" y="680" width="440" height="70" rx="6" fill="#ffffff" stroke="#546e7a"></rect>
+  <text x="260" y="705" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">PostgreSQL</text>
+  <text x="260" y="725" text-anchor="middle" font-size="10" fill="#555">agent_* 表 / documents / sync(Yjs)</text>
+  <text x="260" y="740" text-anchor="middle" font-size="9" fill="#888">迁移制 schema · TypeORM</text>
+
+  <rect x="505" y="680" width="420" height="70" rx="6" fill="#ffffff" stroke="#546e7a"></rect>
+  <text x="715" y="705" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">pgvector</text>
+  <text x="715" y="725" text-anchor="middle" font-size="10" fill="#555">document_chunks (vector 512, HNSW)</text>
+  <text x="715" y="740" text-anchor="middle" font-size="9" fill="#888">余弦检索 · 语义召回</text>
+
+  <!-- 箭头 -->
+  <line x1="220" y1="315" x2="248" y2="315" stroke="#37474f" stroke-width="1.5" marker-end="url(#arrow)"></line>
+  <text x="234" y="305" text-anchor="middle" font-size="9" fill="#37474f">HTTP/SSE</text>
+
+  <line x1="430" y1="135" x2="448" y2="127" stroke="#37474f" stroke-width="1.5" marker-end="url(#arrow)"></line>
+  <line x1="430" y1="305" x2="448" y2="257" stroke="#37474f" stroke-width="1.5" marker-end="url(#arrow)"></line>
+
+  <line x1="585" y1="155" x2="585" y2="163" stroke="#37474f" stroke-width="1.5" marker-end="url(#arrow)"></line>
+  <line x1="585" y1="220" x2="585" y2="228" stroke="#37474f" stroke-width="1.5" marker-end="url(#arrow)"></line>
+  <line x1="585" y1="285" x2="585" y2="293" stroke="#37474f" stroke-width="1.5" marker-end="url(#arrow)"></line>
+  <line x1="585" y1="350" x2="585" y2="358" stroke="#37474f" stroke-width="1.5" marker-end="url(#arrow)"></line>
+  <line x1="585" y1="415" x2="585" y2="423" stroke="#37474f" stroke-width="1.5" marker-end="url(#arrow)"></line>
+  <line x1="585" y1="480" x2="585" y2="488" stroke="#37474f" stroke-width="1.5" marker-end="url(#arrow)"></line>
+  <line x1="585" y1="545" x2="585" y2="553" stroke="#37474f" stroke-width="1.5" marker-end="url(#arrow)"></line>
+
+  <line x1="720" y1="127" x2="743" y2="135" stroke="#37474f" stroke-width="1.5" marker-end="url(#arrow)"></line>
+  <line x1="720" y1="257" x2="743" y2="220" stroke="#37474f" stroke-width="1.5" marker-end="url(#arrow)"></line>
+  <line x1="720" y1="322" x2="743" y2="305" stroke="#37474f" stroke-width="1.5" marker-end="url(#arrow)"></line>
+  <line x1="720" y1="387" x2="743" y2="390" stroke="#37474f" stroke-width="1.5" marker-end="url(#arrow)"></line>
+
+  <line x1="560" y1="640" x2="560" y2="658" stroke="#37474f" stroke-width="1.5" marker-end="url(#arrow)"></line>
+  <line x1="660" y1="640" x2="660" y2="658" stroke="#37474f" stroke-width="1.5" marker-end="url(#arrow)"></line>
+
+  <line x1="845" y1="510" x2="715" y2="660" stroke="#37474f" stroke-width="1.5" marker-end="url(#arrow)"></line>
+</svg>
